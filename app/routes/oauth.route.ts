@@ -15,8 +15,10 @@ router.get(
   "/login/google/callback",
   passport.authenticate("google", {
     scope: ["profile", "email"],
-    successMessage: "success",
+    failureRedirect: "http://localhost:3000/?auth=error",
+    failureMessage: "Failed",
     successRedirect: "http://localhost:3000/?auth=redirecting",
+    successMessage: "success",
   })
 );
 

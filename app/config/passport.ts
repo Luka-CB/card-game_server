@@ -14,10 +14,18 @@ passport.use(
     },
     async (accessToken, getRefreshToken, profile, done) => {
       try {
-        let user = await User.findOne({ providerId: profile.id });
+        let user = await User.findOne({
+          email: profile.emails && profile.emails[0].value,
+        });
+
+        if (user && !user.providerId) {
+          return done(null, false, {
+            message: "This email is already registered!",
+          });
+        }
 
         if (user) {
-          done(null, user);
+          return done(null, user);
         } else {
           user = await User.create({
             username: profile.displayName,
@@ -27,14 +35,16 @@ passport.use(
             providerId: profile.id,
             isVerified: true,
           });
-          done(null, user);
+
+          return done(null, user);
         }
       } catch (error) {
         if (error instanceof Error) {
           console.log(error.message);
-          done(error, false);
+          return done(error, false);
         } else {
           console.log("An unknown error occurred");
+          return done(new Error("An unknown error occurred"), false);
         }
       }
     }

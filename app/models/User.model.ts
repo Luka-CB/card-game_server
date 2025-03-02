@@ -11,7 +11,7 @@ export interface UserIFace {
   providerId: string;
   password: string;
   isVerified: boolean;
-  matchPassword?: (password: string) => void;
+  matchPasswords: (password: string) => Promise<boolean>;
 }
 
 const userSchema = new mongoose.Schema<UserIFace>(
@@ -60,7 +60,9 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-userSchema.methods.matchPasswords = async function (password: string) {
+userSchema.methods.matchPasswords = async function (
+  password: string
+): Promise<boolean> {
   return await bcrypt.compare(password, this.password);
 };
 

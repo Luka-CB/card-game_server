@@ -16,6 +16,7 @@ import "./config/passport";
 import authRouter from "./routes/auth.route";
 import oauthRouter from "./routes/oauth.route";
 import userRouter from "./routes/user.route";
+import emailRouter from "./routes/email.route";
 
 connectDB();
 const app = express();
@@ -51,6 +52,7 @@ app.use(passport.session());
 app.use("/api/auth", authRouter);
 app.use("/api/oauth", oauthRouter);
 app.use("/api/users", userRouter);
+app.use("/api/emails", emailRouter);
 
 app.use(errorMiddleware);
 
