@@ -4,6 +4,7 @@ import User from "../models/User.model";
 import { generateAccessToken, generateRefreshToken } from "../utils/token.util";
 import { uploadImage } from "../utils/cloudinary.util";
 import bcrypt from "bcrypt";
+import { UserSession } from "../utils/interfaces.util";
 
 export const getRefreshToken: RequestHandler = async (req, res, next) => {
   try {
@@ -66,23 +67,15 @@ export const signup: RequestHandler = async (req, res, next) => {
       throw new Error("User not found");
     }
 
-    const accessToken = generateAccessToken(user._id.toString());
-    const refreshToken = generateRefreshToken(user._id.toString());
-
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV !== "development",
-      sameSite: "strict",
-      maxAge: 1000 * 60 * 60 * 24 * 7,
-    });
-
     const userData = {
       _id: user._id,
       username: user.username,
       avatar: user.avatar,
       email: user.email,
-      accessToken,
+      isVerified: user.isVerified,
     };
+
+    (req.session as UserSession).user = userData;
 
     res.status(201).json({
       success: true,
@@ -102,23 +95,15 @@ export const signin: RequestHandler = async (req, res, next) => {
     if (!(await user.matchPasswords(password)))
       throw new Error("Password is Incorrect!");
 
-    const accessToken = generateAccessToken(user._id.toString());
-    const refreshToken = generateRefreshToken(user._id.toString());
-
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV !== "development",
-      sameSite: "strict",
-      maxAge: 1000 * 60 * 60 * 24 * 7,
-    });
-
     const userData = {
       _id: user._id,
       username: user.username,
       avatar: user.avatar,
+      email: user.email,
       isVerified: user.isVerified,
-      accessToken,
     };
+
+    (req.session as UserSession).user = userData;
 
     res.status(201).json(userData);
   } catch (error) {
@@ -151,18 +136,13 @@ export const changePassword: RequestHandler = async (req, res, next) => {
 
 export const logout: RequestHandler = (req, res, next) => {
   try {
-    const cookies = req.cookies;
-    if (!cookies?.refreshToken) {
-      res.sendStatus(204);
-      return;
-    }
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV !== "development",
-      sameSite: "strict",
+    req.session.destroy((err) => {
+      if (err) {
+        throw new Error("Error destroing session: " + err);
+      }
+      res.clearCookie("sid");
+      res.status(200).json({ msg: "success" });
     });
-
-    res.status(200).json({ msg: "success" });
   } catch (error) {
     next(error);
   }

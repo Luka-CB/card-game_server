@@ -2,6 +2,7 @@ import { RequestHandler } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import User, { UserIFace } from "../models/User.model";
 import { transporter } from "../config/nodemailer";
+import { UserSession } from "../utils/interfaces.util";
 
 export const verifyEmail: RequestHandler = async (req, res, next) => {
   try {
@@ -26,7 +27,8 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
 
 export const sendVerificationEmail: RequestHandler = async (req, res, next) => {
   try {
-    const user = req.user as UserIFace;
+    const user = (req.session as UserSession).user;
+    if (!user) throw new Error("Session user not found!");
 
     const token = jwt.sign(
       { id: user?._id },
@@ -85,8 +87,10 @@ export const sendChangePasswordEmail: RequestHandler = async (
 
 export const updateEmail: RequestHandler = async (req, res, next) => {
   try {
-    const user = req.user as UserIFace;
+    const user = (req.session as UserSession).user;
     const { email } = req.body;
+
+    if (!user) throw new Error("Session user not found!");
 
     const updatedUser = await User.updateOne({ _id: user._id }, { email });
     if (!updatedUser) throw new Error("Request has failed!");

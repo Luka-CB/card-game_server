@@ -1,5 +1,7 @@
 import passport from "passport";
 import express from "express";
+import { UserSession } from "../utils/interfaces.util";
+import { UserIFace } from "../models/User.model";
 
 const router = express.Router();
 
@@ -14,12 +16,26 @@ router.get(
 router.get(
   "/login/google/callback",
   passport.authenticate("google", {
-    scope: ["profile", "email"],
     failureRedirect: "http://localhost:3000/?auth=error",
     failureMessage: "Failed",
-    successRedirect: "http://localhost:3000/?auth=redirecting",
-    successMessage: "success",
-  })
+  }),
+  (req, res) => {
+    const user = req.user as UserIFace;
+    (req.session as UserSession).user = {
+      _id: user?._id,
+      username: user?.username,
+      avatar: user?.avatar,
+      email: user?.email,
+      isVerified: user?.isVerified,
+    };
+    req.session.save((err) => {
+      if (err) {
+        console.error("Error saving session:", err);
+        return res.status(500).redirect("http://localhost:3000/?auth=error");
+      }
+      res.redirect("http://localhost:3000/?auth=redirecting");
+    });
+  }
 );
 
 export default router;

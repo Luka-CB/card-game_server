@@ -6,6 +6,8 @@ import passport from "passport";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import cors from "cors";
+import { RedisStore } from "connect-redis";
+import redisClient from "./config/redisClient";
 import errorMiddleware from "./middlewares/error.middleware";
 import connectDB from "./config/db";
 
@@ -36,12 +38,16 @@ app.set("trust proxy", 1);
 
 app.use(
   session({
-    secret: "expresssessionsecret",
+    store: new RedisStore({ client: redisClient }),
+    secret: process.env.SESSION_SECRET as string,
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
+    name: "sid",
     cookie: {
       secure: process.env.NODE_ENV !== "development",
-      maxAge: 1000 * 60 * 60 * 24 * 7,
+      httpOnly: true,
+      maxAge: 1000 * 60 * 60 * 24,
+      sameSite: "strict",
     },
   })
 );
