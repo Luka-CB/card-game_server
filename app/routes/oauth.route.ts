@@ -1,6 +1,5 @@
 import passport from "passport";
 import express from "express";
-import { UserSession } from "../utils/interfaces.util";
 import { UserIFace } from "../models/User.model";
 
 const router = express.Router();
@@ -21,7 +20,7 @@ router.get(
   }),
   (req, res) => {
     const user = req.user as UserIFace;
-    (req.session as UserSession).user = {
+    req.session.user = {
       _id: user?._id,
       username: user?.username,
       avatar: user?.avatar,

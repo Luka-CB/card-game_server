@@ -4,7 +4,6 @@ import User from "../models/User.model";
 import { generateAccessToken, generateRefreshToken } from "../utils/token.util";
 import { uploadImage } from "../utils/cloudinary.util";
 import bcrypt from "bcrypt";
-import { UserSession } from "../utils/interfaces.util";
 
 export const getRefreshToken: RequestHandler = async (req, res, next) => {
   try {
@@ -75,7 +74,7 @@ export const signup: RequestHandler = async (req, res, next) => {
       isVerified: user.isVerified,
     };
 
-    (req.session as UserSession).user = userData;
+    req.session.user = userData;
 
     res.status(201).json({
       success: true,
@@ -103,7 +102,7 @@ export const signin: RequestHandler = async (req, res, next) => {
       isVerified: user.isVerified,
     };
 
-    (req.session as UserSession).user = userData;
+    req.session.user = userData;
 
     res.status(201).json(userData);
   } catch (error) {

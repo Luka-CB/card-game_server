@@ -1,11 +1,13 @@
-import session from "express-session";
+export interface UserSessionData {
+  _id: string;
+  username: string;
+  avatar: string;
+  email: string;
+  isVerified: boolean;
+}
 
-export interface UserSession extends session.Session {
-  user?: {
-    _id: string;
-    username: string;
-    avatar: string;
-    email: string;
-    isVerified: boolean;
-  };
+declare module "express-session" {
+  interface SessionData {
+    user?: UserSessionData;
+  }
 }
