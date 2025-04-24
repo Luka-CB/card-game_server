@@ -1,14 +1,5 @@
 import redisClient from "../config/redisClient";
-
-export interface Room {
-  id: string;
-  name: string;
-  password: string | null;
-  bett: string | null;
-  type: "classic" | "nines" | "betting";
-  status: "public" | "private";
-  user: { id: string; username: string; avatar: string | null }[];
-}
+import { RejoinRoom, Room } from "../utils/interfaces.util";
 
 export const addRoom = async (room: Room) => {
   await redisClient.hset("rooms", room.id, JSON.stringify(room));
@@ -24,11 +15,7 @@ export const getRoom = async (roomId: string) => {
   return roomData ? JSON.parse(roomData) : null;
 };
 
-export const removeRoom = async (roomId: string) => {
-  await redisClient.hdel("rooms", roomId);
-};
-
-export const leaveRoom = async (roomId: string, userId: string) => {
+export const handleRoomLeave = async (roomId: string, userId: string) => {
   const room = await getRoom(roomId);
   if (!room) return;
 
@@ -37,11 +24,29 @@ export const leaveRoom = async (roomId: string, userId: string) => {
   );
 
   if (updatedUsers.length === 0) {
-    await removeRoom(roomId);
+    // If no users left, remove the room
+    await redisClient.hdel("rooms", roomId);
   } else {
+    // Otherwise update the room with remaining users
     const updatedRoom = { ...room, users: updatedUsers };
     await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
   }
+};
+
+export const rejoinRoom = async (
+  roomId: string,
+  users: {
+    id: string;
+    username: string;
+    avatar: string | null;
+  }[]
+) => {
+  const room = await getRoom(roomId);
+
+  const updatedRoom = { ...room, users };
+  await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
+
+  return updatedRoom;
 };
 
 export const joinRoom = async (
@@ -50,7 +55,7 @@ export const joinRoom = async (
   userData: { id: string; username: string; avatar: string | null }
 ) => {
   const room = await getRoom(roomId);
-  if (!room) return;
+  if (!room) throw new Error("Room no longer exists");
 
   // Check if room is full
   if (room.users.length >= 4) {
@@ -74,4 +79,17 @@ export const joinRoom = async (
   const updatedUsers = [...room.users, userToAdd];
   const updatedRoom = { ...room, users: updatedUsers };
   await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
+};
+
+export const destroyRoom = async (roomId: string) => {
+  const room = await getRoom(roomId);
+  if (!room) throw new Error("Room no longer exists");
+
+  const gameInfo = await redisClient.hget("games", roomId);
+  if (gameInfo) {
+    await redisClient.hdel("games", roomId);
+  }
+
+  // Remove the room from Redis
+  await redisClient.hdel("rooms", roomId);
 };
