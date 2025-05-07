@@ -25,7 +25,9 @@ export interface Room {
   user: {
     id: string;
     username: string;
+    status: "active" | "busy" | "inactive" | "left";
     avatar: string | null;
+    botAvatar: string | null;
   }[];
 }
 
@@ -55,11 +57,27 @@ export type Card =
   | { suit: Suit; rank: Rank; id: string }
   | { joker: true; id: string; color: string };
 
+export interface Score {
+  gameHand: number;
+  bid: number;
+  win: number;
+  points: number;
+}
+
+export interface ScoreBoard {
+  playerId: string;
+  playerName: string;
+  scores: Score[] | null;
+}
+
 export interface Game {
   id: string | null;
   roomId: string;
-  status: "trump" | "waiting" | "dealing" | "playing" | "finished";
+  status: "trump" | "waiting" | "dealing" | "bid" | "playing" | "finished";
   dealerId: string | null;
+  players: string[] | null;
+  activePlayerindex: number | null;
+  activePlayerId: string | null;
   currentHand: number | null;
   trumpCard: Card | null;
   hands:
@@ -68,4 +86,5 @@ export interface Game {
         playerId: string;
       }[]
     | null;
+  scoreBoard: ScoreBoard[] | null;
 }

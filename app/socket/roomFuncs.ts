@@ -1,5 +1,5 @@
 import redisClient from "../config/redisClient";
-import { RejoinRoom, Room } from "../utils/interfaces.util";
+import { Room } from "../utils/interfaces.util";
 
 export const addRoom = async (room: Room) => {
   await redisClient.hset("rooms", room.id, JSON.stringify(room));
@@ -52,7 +52,13 @@ export const rejoinRoom = async (
 export const joinRoom = async (
   roomId: string,
   userId: string,
-  userData: { id: string; username: string; avatar: string | null }
+  userData: {
+    id: string;
+    username: string;
+    status: "active" | "busy" | "inactive" | "left";
+    avatar: string | null;
+    botAvatar: string | null;
+  }
 ) => {
   const room = await getRoom(roomId);
   if (!room) throw new Error("Room no longer exists");
@@ -73,10 +79,33 @@ export const joinRoom = async (
   const userToAdd = {
     id: userData.id,
     username: userData.username,
+    status: userData.status || "active",
     avatar: userData.avatar || null,
+    botAvatar: userData.botAvatar || null,
   };
 
   const updatedUsers = [...room.users, userToAdd];
+  const updatedRoom = { ...room, users: updatedUsers };
+  await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
+};
+
+export const updateUserStatus = async (
+  roomId: string,
+  userId: string,
+  status: "active" | "busy" | "inactive" | "left"
+) => {
+  const room = await getRoom(roomId);
+  if (!room) throw new Error("Room no longer exists");
+
+  const updatedUsers = room.users.map(
+    (user: { id: string; status: string }) => {
+      if (user.id === userId) {
+        return { ...user, status };
+      }
+      return user;
+    }
+  );
+
   const updatedRoom = { ...room, users: updatedUsers };
   await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
 };

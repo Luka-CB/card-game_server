@@ -1,6 +1,6 @@
 import redisClient from "../config/redisClient";
 import { randomUUID } from "crypto";
-import { Card, PlayingCard, Rank, Suit } from "../utils/interfaces.util";
+import { Card, Rank, Score, ScoreBoard, Suit } from "../utils/interfaces.util";
 
 const createDeck = (): Card[] => {
   const suits: Suit[] = ["hearts", "diamonds", "clubs", "spades"];
@@ -105,6 +105,7 @@ export const createGameInfo = async (roomId: string) => {
     currentHand: null,
     trumpCard: null,
     hands: null,
+    scoreBoard: null,
   };
   await redisClient.hset("games", roomId, JSON.stringify(initialGameInfo));
   return initialGameInfo;
@@ -115,6 +116,9 @@ export const updateGameInfo = async (
   gameData: Partial<{
     status: string;
     dealerId: string | null;
+    players: string[] | null;
+    activePlayerindex: number | null;
+    activePlayerId: string | null;
     currentHand: number | null;
     trumpCard: Card | null;
     hands: { hand: Card[]; playerId: string }[] | null;
@@ -123,14 +127,77 @@ export const updateGameInfo = async (
   const game = await getGameInfo(roomId);
   if (!game) return;
 
-  console.log("Updating game info:", gameData);
-
   const updatedGame = {
     ...game,
     ...gameData,
   };
 
-  console.log("Updated game info:", updatedGame);
+  await redisClient.hset("games", roomId, JSON.stringify(updatedGame));
+  return updatedGame;
+};
+
+export const updateGameScoreBoard = async (
+  roomId: string,
+  scoreBoard: {
+    playerId: string;
+    playerName: string;
+  }[]
+) => {
+  const game = await getGameInfo(roomId);
+  if (!game) return;
+
+  const updatedGame = {
+    ...game,
+    scoreBoard: scoreBoard.map((player) => ({
+      ...player,
+      scores: null,
+    })),
+  };
+
+  await redisClient.hset("games", roomId, JSON.stringify(updatedGame));
+  return updatedGame;
+};
+
+export const updateGameScore = async (
+  roomId: string,
+  playerId: string,
+  score: Partial<{
+    gameHand: number;
+    bid: number;
+    win: number;
+    points: number;
+  }>
+) => {
+  const game = await getGameInfo(roomId);
+  if (!game) return;
+
+  const updatedGame = {
+    ...game,
+    scoreBoard: game.scoreBoard.map((player: ScoreBoard) => {
+      if (player.playerId !== playerId) return player;
+
+      const scores = [...(player.scores || [])];
+      const currentHandIndex = scores.findIndex(
+        (s) => s.gameHand === score.gameHand
+      );
+
+      if (currentHandIndex >= 0) {
+        // Update existing score
+        scores[currentHandIndex] = {
+          ...scores[currentHandIndex],
+          ...score,
+        };
+      } else {
+        // Add new score
+        scores.push(score as Score);
+      }
+
+      return {
+        ...player,
+        scores,
+      };
+    }),
+  };
 
   await redisClient.hset("games", roomId, JSON.stringify(updatedGame));
   return updatedGame;
@@ -141,9 +208,39 @@ export const removeGameInfo = async (roomId: string) => {
 };
 
 export const getTrumpCard = async (roomId: string) => {
-  const deck = shuffle(createDeck());
-  const trumpCard = deck.pop();
+  const gameInfo = await getGameInfo(roomId);
+  if (!gameInfo || !gameInfo.hands) return null;
+
+  let deck = createDeck();
+
+  const dealtCards = gameInfo.hands.flatMap(
+    (hand: { hand: Card; playerId: string }) => hand.hand
+  );
+
+  deck = deck.filter(
+    (card: any) =>
+      !dealtCards.some(
+        (dealtCard: any) =>
+          (dealtCard.joker && card.joker) ||
+          (dealtCard.suit === card.suit && dealtCard.rank === card.rank)
+      )
+  );
+
+  if (deck.length === 0) {
+    console.log("No cards left in the deck");
+    return null;
+  }
+
+  deck = shuffle(deck);
+  const trumpCard: any = deck.pop();
+
   if (!trumpCard) return null;
+
   await updateGameInfo(roomId, { trumpCard });
+  console.log(
+    "Dealt cards:",
+    dealtCards.map((c: any) => `${c.suit}-${c.rank}`)
+  );
+  console.log("Selected trump card:", `${trumpCard.suit}-${trumpCard.rank}`);
   return trumpCard;
 };

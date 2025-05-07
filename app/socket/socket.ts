@@ -7,6 +7,8 @@ import {
   PlayingCard,
   RejoinRoom,
   Room,
+  Score,
+  ScoreBoard,
   UserSessionData,
 } from "../utils/interfaces.util";
 import { IncomingMessage } from "http";
@@ -18,6 +20,8 @@ import {
   getTrumpCard,
   removeGameInfo,
   updateGameInfo,
+  updateGameScore,
+  updateGameScoreBoard,
 } from "./gameFuncs";
 import {
   addRoom,
@@ -26,6 +30,7 @@ import {
   handleRoomLeave,
   joinRoom,
   rejoinRoom,
+  updateUserStatus,
 } from "./roomFuncs";
 
 declare module "http" {
@@ -156,6 +161,27 @@ const socketHandler = (io: Server) => {
       }
     });
 
+    socket.on(
+      "updateUserStatus",
+      async (
+        roomId: string,
+        userId: string,
+        status: "active" | "busy" | "inactive" | "left"
+      ) => {
+        if (roomId && userId && status) {
+          await updateUserStatus(roomId, userId, status);
+          const updatedRooms = await getRooms();
+          if (updatedRooms) {
+            io.emit("getRooms", updatedRooms);
+            const foundRoom = updatedRooms.find((r) => r.id === roomId);
+            if (foundRoom) {
+              io.to(roomId).emit("getRoom", foundRoom);
+            }
+          }
+        }
+      }
+    );
+
     socket.on("leaveRoom", async (roomId: string, userId: string) => {
       if (roomId && userId) {
         await handleRoomLeave(roomId, userId);
@@ -201,7 +227,13 @@ const socketHandler = (io: Server) => {
       async (
         roomId: string,
         userId: string,
-        userData: { id: string; username: string; avatar: string | null }
+        userData: {
+          id: string;
+          username: string;
+          status: "active" | "busy" | "inactive" | "left";
+          avatar: string | null;
+          botAvatar: string | null;
+        }
       ) => {
         try {
           if (roomId && userId && userData) {
@@ -306,6 +338,39 @@ const socketHandler = (io: Server) => {
         }
       }
     });
+
+    socket.on(
+      "updateGameScoreBoard",
+      async (roomId: string, scoreBoard: ScoreBoard[]) => {
+        if (roomId && scoreBoard) {
+          const updatedScoreBoard = await updateGameScoreBoard(
+            roomId,
+            scoreBoard
+          );
+          if (updatedScoreBoard) {
+            const gameInfo = await getGameInfo(roomId);
+            if (gameInfo) {
+              io.to(roomId).emit("getGameInfo", gameInfo);
+            }
+          }
+        }
+      }
+    );
+
+    socket.on(
+      "updateGameScore",
+      async (roomId: string, playerId: string, score: Score) => {
+        if (roomId && playerId && score) {
+          const updatedGame = await updateGameScore(roomId, playerId, score);
+          if (updatedGame) {
+            const gameInfo = await getGameInfo(roomId);
+            if (gameInfo) {
+              io.to(roomId).emit("getGameInfo", gameInfo);
+            }
+          }
+        }
+      }
+    );
 
     socket.on("destroyRoom", async (roomId: string) => {
       if (roomId) {
