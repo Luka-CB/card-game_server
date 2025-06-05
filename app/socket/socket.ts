@@ -5,23 +5,28 @@ import {
   Card,
   Game,
   PlayingCard,
-  RejoinRoom,
   Room,
-  Score,
-  ScoreBoard,
   UserSessionData,
 } from "../utils/interfaces.util";
 import { IncomingMessage } from "http";
 import {
+  clearPlayedCards,
   createGameInfo,
   dealCards,
   determineDealer,
   getGameInfo,
   getTrumpCard,
+  removeCardFromHand,
   removeGameInfo,
+  setPlayedCards,
+  updateBids,
   updateGameInfo,
-  updateGameScore,
-  updateGameScoreBoard,
+  updateWins,
+  getRoundCount,
+  setPlayRoundCount,
+  removeRoundCount,
+  chooseTrumpCard,
+  calculateAndUpdatePoints,
 } from "./gameFuncs";
 import {
   addRoom,
@@ -177,6 +182,42 @@ const socketHandler = (io: Server) => {
             if (foundRoom) {
               io.to(roomId).emit("getRoom", foundRoom);
             }
+          }
+        }
+      }
+    );
+
+    socket.on(
+      "setPlayedCards",
+      async (data: { roomId: string; playerId: string; playedCard: Card }) => {
+        if (data) {
+          await setPlayedCards(data.roomId, data.playerId, data.playedCard);
+          const updatedGameInfo = await getGameInfo(data.roomId);
+          if (updatedGameInfo) {
+            io.to(data.roomId).emit("getGameInfo", updatedGameInfo);
+          }
+        }
+      }
+    );
+
+    socket.on("clearPlayedCards", async (roomId: string) => {
+      if (roomId) {
+        await clearPlayedCards(roomId);
+        const updatedGameInfo = await getGameInfo(roomId);
+        if (updatedGameInfo) {
+          io.to(roomId).emit("getGameInfo", updatedGameInfo);
+        }
+      }
+    });
+
+    socket.on(
+      "removeCardFromHand",
+      async (data: { roomId: string; playerId: string; card: Card }) => {
+        if (data) {
+          await removeCardFromHand(data.roomId, data.playerId, data.card);
+          const updatedGameInfo = await getGameInfo(data.roomId);
+          if (updatedGameInfo) {
+            io.to(data.roomId).emit("getGameInfo", updatedGameInfo);
           }
         }
       }
@@ -340,14 +381,14 @@ const socketHandler = (io: Server) => {
     });
 
     socket.on(
-      "updateGameScoreBoard",
-      async (roomId: string, scoreBoard: ScoreBoard[]) => {
-        if (roomId && scoreBoard) {
-          const updatedScoreBoard = await updateGameScoreBoard(
-            roomId,
-            scoreBoard
-          );
-          if (updatedScoreBoard) {
+      "updateBids",
+      async (
+        roomId: string,
+        bid: { playerId: string; bid: number; gameHand: number }
+      ) => {
+        if (roomId && bid) {
+          const updatedBid = await updateBids(roomId, bid);
+          if (updatedBid) {
             const gameInfo = await getGameInfo(roomId);
             if (gameInfo) {
               io.to(roomId).emit("getGameInfo", gameInfo);
@@ -358,11 +399,14 @@ const socketHandler = (io: Server) => {
     );
 
     socket.on(
-      "updateGameScore",
-      async (roomId: string, playerId: string, score: Score) => {
-        if (roomId && playerId && score) {
-          const updatedGame = await updateGameScore(roomId, playerId, score);
-          if (updatedGame) {
+      "updateWins",
+      async (
+        roomId: string,
+        win: { playerId: string; win: number; gameHand: number }
+      ) => {
+        if (roomId && win) {
+          const updatedWin = await updateWins(roomId, win);
+          if (updatedWin) {
             const gameInfo = await getGameInfo(roomId);
             if (gameInfo) {
               io.to(roomId).emit("getGameInfo", gameInfo);
@@ -375,6 +419,7 @@ const socketHandler = (io: Server) => {
     socket.on("destroyRoom", async (roomId: string) => {
       if (roomId) {
         await destroyRoom(roomId);
+        await removeRoundCount(roomId);
         socket.leave(roomId);
         const updatedRooms = await getRooms();
         io.emit("getRooms", updatedRooms);
@@ -388,6 +433,40 @@ const socketHandler = (io: Server) => {
         if (gameInfo) {
           io.to(roomId).emit("getGameInfo", gameInfo);
         }
+      }
+    });
+
+    socket.on(
+      "chooseTrumpCard",
+      async (roomId: string, trumpCard: PlayingCard) => {
+        await chooseTrumpCard(roomId, trumpCard);
+        const gameInfo = await getGameInfo(roomId);
+        if (gameInfo) {
+          io.to(roomId).emit("getGameInfo", gameInfo);
+        }
+      }
+    );
+
+    socket.on("getRoundCount", async (roomId: string) => {
+      const roundCount = await getRoundCount(roomId);
+      if (roundCount) {
+        socket.emit("getRoundCount", roundCount);
+      }
+    });
+
+    socket.on("setRoundCount", async (roomId: string, count: number) => {
+      await setPlayRoundCount(roomId, count);
+      const roundCount = await getRoundCount(roomId);
+      if (roundCount) {
+        socket.emit("getRoundCount", roundCount);
+      }
+    });
+
+    socket.on("calculatePoints", async (roomId: string) => {
+      await calculateAndUpdatePoints(roomId);
+      const gameInfo = await getGameInfo(roomId);
+      if (gameInfo) {
+        io.to(roomId).emit("getGameInfo", gameInfo);
       }
     });
 
