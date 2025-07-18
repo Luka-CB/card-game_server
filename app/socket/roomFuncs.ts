@@ -2,7 +2,11 @@ import redisClient from "../config/redisClient";
 import { Room } from "../utils/interfaces.util";
 
 export const addRoom = async (room: Room) => {
-  await redisClient.hset("rooms", room.id, JSON.stringify(room));
+  const roomWithActivity = {
+    ...room,
+    lastActivityAt: new Date(),
+  };
+  await redisClient.hset("rooms", room.id, JSON.stringify(roomWithActivity));
 };
 
 export const getRooms = async () => {
@@ -13,6 +17,15 @@ export const getRooms = async () => {
 export const getRoom = async (roomId: string) => {
   const roomData = await redisClient.hget("rooms", roomId);
   return roomData ? JSON.parse(roomData) : null;
+};
+
+export const updateRoomActivity = async (roomId: string) => {
+  const room = await getRoom(roomId);
+  if (!room) return;
+
+  const updatedRoom = { ...room, lastActivityAt: new Date() };
+
+  await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
 };
 
 export const handleRoomLeave = async (roomId: string, userId: string) => {
@@ -28,7 +41,11 @@ export const handleRoomLeave = async (roomId: string, userId: string) => {
     await redisClient.hdel("rooms", roomId);
   } else {
     // Otherwise update the room with remaining users
-    const updatedRoom = { ...room, users: updatedUsers };
+    const updatedRoom = {
+      ...room,
+      users: updatedUsers,
+      lastActivityAt: new Date(),
+    };
     await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
   }
 };
@@ -43,7 +60,7 @@ export const rejoinRoom = async (
 ) => {
   const room = await getRoom(roomId);
 
-  const updatedRoom = { ...room, users };
+  const updatedRoom = { ...room, users, lastActivityAt: new Date() };
   await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
 
   return updatedRoom;
@@ -85,7 +102,11 @@ export const joinRoom = async (
   };
 
   const updatedUsers = [...room.users, userToAdd];
-  const updatedRoom = { ...room, users: updatedUsers };
+  const updatedRoom = {
+    ...room,
+    users: updatedUsers,
+    lastActivityAt: new Date(),
+  };
   await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
 };
 
@@ -106,7 +127,22 @@ export const updateUserStatus = async (
     }
   );
 
-  const updatedRoom = { ...room, users: updatedUsers };
+  const updatedRoom = {
+    ...room,
+    users: updatedUsers,
+    lastActivityAt: new Date(),
+  };
+  await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
+};
+
+export const updateActiveRoomStatus = async (
+  roomId: string,
+  value: boolean
+) => {
+  const room = await getRoom(roomId);
+  if (!room) throw new Error("Room no longer exists");
+
+  const updatedRoom = { ...room, isActive: value, lastActivityAt: new Date() };
   await redisClient.hset("rooms", roomId, JSON.stringify(updatedRoom));
 };
 

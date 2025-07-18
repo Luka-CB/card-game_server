@@ -17,6 +17,7 @@ import oauthRouter from "./routes/oauth.route";
 import userRouter from "./routes/user.route";
 import emailRouter from "./routes/email.route";
 import sessionMiddleware from "./middlewares/session.middleware";
+import { roomCleanupService } from "./socket/roomCleanupService";
 
 connectDB();
 const app = express();
@@ -60,7 +61,35 @@ app.use(errorMiddleware);
 
 socketHandler(io);
 
+roomCleanupService.start();
+
+process.on("SIGTERM", () => {
+  console.log(
+    "SIGTERM recieved, shutting down gracefully...".red.underline.bold
+  );
+  roomCleanupService.stop();
+  server.close(() => {
+    console.log("Server closed".red.underline.bold);
+    process.exit(0);
+  });
+});
+
+process.on("SIGINT", () => {
+  console.log(
+    "SIGINT recieved, shutting down gracefully...".red.underline.bold
+  );
+  roomCleanupService.stop();
+  server.close(() => {
+    console.log("Server closed".red.underline.bold);
+    process.exit(0);
+  });
+});
+
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () =>
-  console.log(`Server is up and running on port ${PORT}`.cyan.underline.bold)
-);
+server.listen(PORT, () => {
+  console.log(`Server is up and running on port ${PORT}`.cyan.underline.bold);
+  console.log(
+    `Room cleanup service configuration:`,
+    roomCleanupService.getConfig()
+  );
+});
