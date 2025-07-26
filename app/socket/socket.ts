@@ -4,6 +4,7 @@ import sessionMiddleware from "../middlewares/session.middleware";
 import {
   Card,
   Game,
+  PlayedCard,
   PlayingCard,
   Room,
   UserSessionData,
@@ -19,14 +20,12 @@ import {
   removeCardFromHand,
   removeGameInfo,
   setPlayedCards,
-  updateBids,
   updateGameInfo,
-  updateWins,
   getRoundCount,
   setPlayRoundCount,
   removeRoundCount,
   chooseTrumpCard,
-  calculateAndUpdatePoints,
+  setLastPlayedCards,
 } from "./gameFuncs";
 import {
   addRoom,
@@ -35,8 +34,16 @@ import {
   handleRoomLeave,
   joinRoom,
   rejoinRoom,
+  updateActiveRoomStatus,
+  updateRoomActivity,
   updateUserStatus,
 } from "./roomFuncs";
+import {
+  calculateAndUpdatePoints,
+  createScoreBoard,
+  updateBids,
+  updateWins,
+} from "./scoreBoardFuncs";
 
 declare module "http" {
   interface IncomingMessage {
@@ -53,6 +60,16 @@ declare module "socket.io" {
     user?: UserSessionData;
   }
 }
+
+const trackActivity = async (roomId: string) => {
+  if (roomId) {
+    try {
+      await updateRoomActivity(roomId);
+    } catch (error) {
+      console.log(`Error tracking activity for room ${roomId}:`, error);
+    }
+  }
+};
 
 const socketHandler = (io: Server) => {
   io.use((socket, next) => {
@@ -141,11 +158,13 @@ const socketHandler = (io: Server) => {
     socket.on("getRoom", async (roomId: string) => {
       if (roomId) {
         const room = await getRooms();
-
         socket.join(roomId);
+
+        await trackActivity(roomId);
 
         const foundRoom = room.find((r) => r.id === roomId);
         if (foundRoom) {
+          await updateActiveRoomStatus(roomId, true);
           socket.emit("getRoom", foundRoom);
         } else {
           socket.emit("error", "Room not found");
@@ -192,6 +211,9 @@ const socketHandler = (io: Server) => {
       async (data: { roomId: string; playerId: string; playedCard: Card }) => {
         if (data) {
           await setPlayedCards(data.roomId, data.playerId, data.playedCard);
+
+          await trackActivity(data.roomId);
+
           const updatedGameInfo = await getGameInfo(data.roomId);
           if (updatedGameInfo) {
             io.to(data.roomId).emit("getGameInfo", updatedGameInfo);
@@ -200,9 +222,28 @@ const socketHandler = (io: Server) => {
       }
     );
 
+    socket.on(
+      "setLastPlayedCards",
+      async (roomId: string, playedCards: PlayedCard[]) => {
+        if (roomId && playedCards) {
+          await setLastPlayedCards(roomId, playedCards);
+
+          await trackActivity(roomId);
+
+          const updatedGameInfo = await getGameInfo(roomId);
+          if (updatedGameInfo) {
+            io.to(roomId).emit("getGameInfo", updatedGameInfo);
+          }
+        }
+      }
+    );
+
     socket.on("clearPlayedCards", async (roomId: string) => {
       if (roomId) {
         await clearPlayedCards(roomId);
+
+        await trackActivity(roomId);
+
         const updatedGameInfo = await getGameInfo(roomId);
         if (updatedGameInfo) {
           io.to(roomId).emit("getGameInfo", updatedGameInfo);
@@ -215,6 +256,9 @@ const socketHandler = (io: Server) => {
       async (data: { roomId: string; playerId: string; card: Card }) => {
         if (data) {
           await removeCardFromHand(data.roomId, data.playerId, data.card);
+
+          await trackActivity(data.roomId);
+
           const updatedGameInfo = await getGameInfo(data.roomId);
           if (updatedGameInfo) {
             io.to(data.roomId).emit("getGameInfo", updatedGameInfo);
@@ -301,6 +345,8 @@ const socketHandler = (io: Server) => {
       const room = rooms.find((r) => r.id === roomId);
       if (!room) return;
 
+      await trackActivity(roomId);
+
       const playerIds = [...room.users]
         .sort((a, b) => a.id.localeCompare(b.id))
         .map((user: { id: string }) => user.id);
@@ -322,6 +368,8 @@ const socketHandler = (io: Server) => {
       const rooms = await getRooms();
       const room = rooms.find((r) => r.id === roomId);
       if (!room) return;
+
+      await trackActivity(roomId);
 
       const playerIds = room.users.map((user: { id: string }) => user.id);
       const cardsPerPlayer = round;
@@ -348,11 +396,17 @@ const socketHandler = (io: Server) => {
         });
       }
 
-      if (gameInfo && newHands.length === 4) {
-        await updateGameInfo(roomId, {
-          ...gameInfo,
-          hands: newHands,
-        });
+      const hasEmptyHands =
+        gameInfo?.hands === null ||
+        gameInfo?.hands?.every((hand: any) => hand.hand.length === 0);
+
+      if (hasEmptyHands) {
+        if (gameInfo && newHands.length === 4) {
+          await updateGameInfo(roomId, {
+            ...gameInfo,
+            hands: newHands,
+          });
+        }
       }
     });
 
@@ -384,10 +438,17 @@ const socketHandler = (io: Server) => {
       "updateBids",
       async (
         roomId: string,
-        bid: { playerId: string; bid: number; gameHand: number }
+        bid: {
+          playerId: string;
+          bid: number;
+          gameHand: number;
+        }
       ) => {
         if (roomId && bid) {
           const updatedBid = await updateBids(roomId, bid);
+
+          await trackActivity(roomId);
+
           if (updatedBid) {
             const gameInfo = await getGameInfo(roomId);
             if (gameInfo) {
@@ -406,6 +467,9 @@ const socketHandler = (io: Server) => {
       ) => {
         if (roomId && win) {
           const updatedWin = await updateWins(roomId, win);
+
+          await trackActivity(roomId);
+
           if (updatedWin) {
             const gameInfo = await getGameInfo(roomId);
             if (gameInfo) {
@@ -428,6 +492,9 @@ const socketHandler = (io: Server) => {
 
     socket.on("getTrumpCard", async (roomId: string) => {
       const trumpCard = await getTrumpCard(roomId);
+
+      await trackActivity(roomId);
+
       if (trumpCard) {
         const gameInfo = await getGameInfo(roomId);
         if (gameInfo) {
@@ -440,6 +507,9 @@ const socketHandler = (io: Server) => {
       "chooseTrumpCard",
       async (roomId: string, trumpCard: PlayingCard) => {
         await chooseTrumpCard(roomId, trumpCard);
+
+        await trackActivity(roomId);
+
         const gameInfo = await getGameInfo(roomId);
         if (gameInfo) {
           io.to(roomId).emit("getGameInfo", gameInfo);
@@ -470,21 +540,18 @@ const socketHandler = (io: Server) => {
       }
     });
 
+    socket.on("createScoreBoard", async (roomId: string) => {
+      const scoreBoard = await createScoreBoard(roomId);
+      if (scoreBoard) {
+        const gameInfo = await getGameInfo(roomId);
+        if (gameInfo) {
+          io.to(roomId).emit("getGameInfo", gameInfo);
+        }
+      }
+    });
+
     socket.on("disconnect", async () => {
       const userId = socket.user?._id;
-      if (userId) {
-        const rooms = await getRooms();
-        const userRoom = rooms.find((room) =>
-          room.users.some((user: { id: string }) => user.id === userId)
-        );
-
-        // if (userRoom && userRoom.users.length > 1) {
-        //   await handleRoomLeave(userRoom.id, userId);
-        //   const updatedRooms = await getRooms();
-        //   socket.leave(userRoom.id);
-        //   io.emit("getRooms", updatedRooms);
-        // }
-      }
 
       for (const roomId in dealerRevealControllers) {
         const controller = dealerRevealControllers[roomId];

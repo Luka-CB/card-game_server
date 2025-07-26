@@ -22,7 +22,8 @@ export interface Room {
   hisht: string;
   isActive?: boolean;
   createdAt: Date;
-  user: {
+  lastActivityAt: Date;
+  users: {
     id: string;
     username: string;
     status: "active" | "busy" | "inactive" | "left";
@@ -72,6 +73,7 @@ export interface HandBid {
   playerId: string;
   bids: {
     gameHand: number;
+    handNumber: number;
     bid: number;
   }[];
 }
@@ -80,6 +82,7 @@ export interface HandWin {
   playerId: string;
   wins: {
     gameHand: number;
+    handNumber: number;
     win: number;
   }[];
 }
@@ -88,6 +91,7 @@ export interface HandPoint {
   playerId: string;
   points: {
     gameHand: number;
+    handNumber: number;
     point: number;
   }[];
 }
@@ -96,6 +100,31 @@ export interface PlayedCard {
   playerId: string;
   playerIndex: number;
   card: Card;
+}
+
+export interface Round {
+  id: number;
+  gameHand: number;
+  handNumber: number;
+  bid: number | null;
+  points: {
+    value: number;
+    isCut: boolean;
+    isBonus: boolean;
+  };
+}
+
+export interface ScoreBoard {
+  playerId: string;
+  roundOne: Round[];
+  roundSumOne: number;
+  roundTwo: Round[];
+  roundSumTwo: number;
+  roundThree: Round[];
+  roundSumThree: number;
+  roundFour: Round[];
+  roundSumFour: number;
+  totalSum: number;
 }
 
 export interface Game {
@@ -118,11 +147,6 @@ export interface Game {
   handWins: HandWin[] | null;
   handPoints: HandPoint[] | null;
   playedCards: PlayedCard[] | null;
-  lastPlayedCards:
-    | {
-        playerId: string;
-        playerIndex: number;
-        card: Card;
-      }[]
-    | null;
+  lastPlayedCards: PlayedCard[] | null;
+  scoreBoard: ScoreBoard[] | null;
 }
