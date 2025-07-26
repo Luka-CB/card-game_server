@@ -44,6 +44,7 @@ import {
   updateBids,
   updateWins,
 } from "./scoreBoardFuncs";
+import { getBotBid, integrateBotsWithGame } from "./bots";
 
 declare module "http" {
   interface IncomingMessage {
@@ -453,6 +454,69 @@ const socketHandler = (io: Server) => {
             const gameInfo = await getGameInfo(roomId);
             if (gameInfo) {
               io.to(roomId).emit("getGameInfo", gameInfo);
+            }
+          }
+        }
+      }
+    );
+
+    socket.on(
+      "setBotBid",
+      async (data: {
+        roomId: string;
+        playerId: string;
+        hand: Card[];
+        playerOrder: string[];
+        currentBids: { [playerId: string]: number };
+        nextPlayerId: string;
+      }) => {
+        if (
+          data.roomId &&
+          data.playerId &&
+          data.hand &&
+          data.playerOrder &&
+          data.nextPlayerId
+        ) {
+          const game = await getGameInfo(data.roomId);
+          if (game) {
+            const gameState = integrateBotsWithGame(game);
+            const botBid = getBotBid(
+              data.playerId,
+              data.hand,
+              gameState,
+              data.playerOrder,
+              data.currentBids
+            );
+            if (botBid) {
+              console.log("bot bid", botBid);
+              await updateBids(data.roomId, {
+                playerId: data.playerId,
+                bid: botBid,
+                gameHand: game.gameHand,
+              });
+
+              await updateGameInfo(data.roomId, {
+                currentPlayerId: data.nextPlayerId,
+                status: game.dealerId === data.playerId ? "playing" : "bid",
+              });
+
+              await updateUserStatus(data.roomId, data.playerId, "busy");
+
+              const updatedGameInfo = await getGameInfo(data.roomId);
+              if (updatedGameInfo) {
+                io.to(data.roomId).emit("getGameInfo", updatedGameInfo);
+              }
+
+              const updatedRooms = await getRooms();
+              if (updatedRooms) {
+                io.emit("getRooms", updatedRooms);
+                const foundRoom = updatedRooms.find(
+                  (r) => r.id === data.roomId
+                );
+                if (foundRoom) {
+                  io.to(data.roomId).emit("getRoom", foundRoom);
+                }
+              }
             }
           }
         }

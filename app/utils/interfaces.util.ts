@@ -57,17 +57,19 @@ export interface PlayingCard {
 
 export type Suit = "hearts" | "diamonds" | "clubs" | "spades";
 export type Rank = "6" | "7" | "8" | "9" | "10" | "J" | "Q" | "K" | "A";
-export type Strength = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-export type Card =
-  | { suit: Suit; rank: Rank; strength: Strength; id: string }
-  | {
-      joker: true;
-      strength: number;
-      id: string;
-      color: string;
-      type?: "need" | "pass" | "takes";
-      requestedSuit?: string;
-    };
+export type Strength = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type Card = {
+  joker: boolean;
+  suit: Suit | null;
+  rank: Rank | null;
+  strength: Strength;
+  color?: string | null;
+  isJoker?: boolean;
+  isTrump?: boolean;
+  id: string;
+  type?: "need" | "pass" | "takes" | null;
+  requestedSuit?: string | null;
+};
 
 export interface HandBid {
   playerId: string;

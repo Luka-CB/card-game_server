@@ -30,7 +30,13 @@ const createDeck = (): Card[] => {
 
   for (let suit of suits) {
     for (let rank of ranks) {
-      deck.push({ suit, rank, strength: getStrength(rank), id: randomUUID() });
+      deck.push({
+        joker: false,
+        suit,
+        rank,
+        strength: getStrength(rank),
+        id: randomUUID(),
+      });
     }
   }
 
@@ -44,8 +50,22 @@ const createDeck = (): Card[] => {
   );
 
   deck.push(
-    { joker: true, strength: 10, id: randomUUID(), color: "black" },
-    { joker: true, strength: 10, id: randomUUID(), color: "red" }
+    {
+      joker: true,
+      suit: null,
+      rank: null,
+      strength: 10,
+      id: randomUUID(),
+      color: "black",
+    },
+    {
+      joker: true,
+      suit: null,
+      rank: null,
+      strength: 10,
+      id: randomUUID(),
+      color: "red",
+    }
   );
 
   return deck;
