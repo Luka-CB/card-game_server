@@ -8,7 +8,11 @@ import {
   Strength,
   Suit,
   PlayingCard,
+  HandWin,
+  HandBid,
+  ScoreBoard,
 } from "../utils/interfaces.util";
+import { getRoom } from "./roomFuncs";
 
 const createDeck = (): Card[] => {
   const suits: Suit[] = ["hearts", "diamonds", "clubs", "spades"];
@@ -138,11 +142,20 @@ export const createGameInfo = async (roomId: string) => {
   const existingGameInfo = await getGameInfo(roomId);
   if (existingGameInfo) return existingGameInfo;
 
+  const room = await getRoom(roomId);
+  if (!room) return null;
+
+  const playerIds = [...room.users]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((user) => user.id);
+
   const initialGameInfo = {
     id: randomUUID(),
     roomId,
     status: "dealing",
+    players: playerIds,
     dealerId: null,
+    currentPlayerId: null,
     currentHand: null,
     handCount: 1,
     trumpCard: null,
@@ -162,8 +175,12 @@ export const updateGameInfo = async (
     currentHand: number | null;
     handCount: number | null;
     playedCards: PlayedCard[] | null;
+    lastPlayedCards: PlayedCard[] | null;
     trumpCard: Card | null;
     hands: { hand: Card[]; playerId: string }[] | null;
+    handWins: HandWin[] | null;
+    handBids: HandBid[] | null;
+    scoreBoard: ScoreBoard[] | null;
   }>
 ) => {
   const game = await getGameInfo(roomId);
@@ -299,7 +316,7 @@ export const chooseTrumpCard = async (
 
 export const getRoundCount = async (roomId: string) => {
   const roundCount = await redisClient.hget("roundCount", roomId);
-  return roundCount ? JSON.parse(roundCount) : null;
+  return roundCount ? JSON.parse(roundCount).count : 0;
 };
 
 export const setPlayRoundCount = async (roomId: string, count: number) => {
@@ -317,4 +334,81 @@ export const setPlayRoundCount = async (roomId: string, count: number) => {
 
 export const removeRoundCount = async (roomId: string) => {
   await redisClient.hdel("roundCount", roomId);
+};
+
+export const dealRemainingToNine = async (roomId: string) => {
+  const gameInfo = await getGameInfo(roomId);
+  if (!gameInfo || !gameInfo.hands || gameInfo.currentHand !== 9) return null;
+
+  let deck = createDeck();
+
+  const dealtCards = gameInfo.hands.flatMap(
+    (h: { hand: Card[]; playerId: string }) => h.hand
+  );
+
+  const dealtNonJokerKeys = new Set(
+    dealtCards
+      .filter((c: Card) => !c.joker)
+      .map((c: Card) => `${c.suit}-${c.rank}`)
+  );
+  let jokersToRemove = dealtCards.filter((c: Card) => c.joker).length;
+
+  deck = deck.filter((card) => {
+    if (card.joker) {
+      if (jokersToRemove > 0) {
+        jokersToRemove--;
+        return false;
+      }
+      return true;
+    }
+    const key = `${card.suit}-${card.rank}`;
+    return !dealtNonJokerKeys.has(key);
+  });
+
+  deck = shuffle(deck);
+
+  const handsMap: Record<string, Card[]> = {};
+  for (const h of gameInfo.hands) {
+    handsMap[h.playerId] = [...h.hand];
+  }
+
+  const players: string[] = gameInfo.players || [];
+  const dealerIndex = players.indexOf(gameInfo.dealerId as string);
+  const dealOrder =
+    dealerIndex >= 0
+      ? [
+          ...players.slice(dealerIndex + 1),
+          ...players.slice(0, dealerIndex + 1),
+        ]
+      : players;
+
+  const needMap: Record<string, number> = {};
+  let totalNeeded = 0;
+  for (const pid of players) {
+    const need = Math.max(0, 9 - (handsMap[pid]?.length || 0));
+    needMap[pid] = need;
+    totalNeeded += need;
+  }
+  if (totalNeeded === 0) return gameInfo.hands;
+
+  while (totalNeeded > 0 && deck.length > 0) {
+    for (const pid of dealOrder) {
+      if (needMap[pid] > 0 && deck.length > 0) {
+        const next = deck.shift() as Card;
+        handsMap[pid].push(next);
+        needMap[pid] -= 1;
+        totalNeeded -= 1;
+      }
+    }
+  }
+
+  const updatedHands = gameInfo.hands.map(
+    (h: { playerId: string; hand: Card[] }) => ({
+      playerId: h.playerId,
+      hand: handsMap[h.playerId],
+    })
+  );
+
+  await updateGameInfo(roomId, { hands: updatedHands });
+  return updatedHands;
 };
