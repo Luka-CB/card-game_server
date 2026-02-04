@@ -1,7 +1,9 @@
 import { RequestHandler } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import User from "../models/User.model";
+import UserStats from "../models/UserStats.model";
 import { transporter } from "../config/nodemailer";
+import { getEmailTemplate } from "../utils/helper";
 
 export const verifyEmail: RequestHandler = async (req, res, next) => {
   try {
@@ -9,14 +11,25 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
 
     const decoded = jwt.verify(
       token as string,
-      process.env.JWT_SECRET as string
+      process.env.JWT_SECRET as string,
     ) as JwtPayload;
 
     const updatedUser = await User.updateOne(
       { _id: decoded.id },
-      { isVerified: true }
+      { isVerified: true },
     );
     if (!updatedUser) throw new Error("Request has failed!");
+
+    const updateUserStats = await UserStats.updateOne(
+      { userId: decoded.id },
+      { jCoins: 1000 },
+    );
+    if (!updateUserStats) throw new Error("Failed to initialize user stats!");
+
+    if (req.session.user && req.session.user._id === decoded.id) {
+      req.session.user.isVerified = true;
+      req.session.save();
+    }
 
     res.status(200).json({ success: true });
   } catch (error) {
@@ -32,16 +45,25 @@ export const sendVerificationEmail: RequestHandler = async (req, res, next) => {
     const token = jwt.sign(
       { id: user?._id },
       process.env.JWT_SECRET as string,
-      { expiresIn: "10m" }
+      { expiresIn: "10m" },
     );
 
     const verificationLink = `http://localhost:3000/?auth=verified&token=${token}`;
 
+    const htmlContent = getEmailTemplate(
+      "Verify Your Email",
+      "Welcome to JokerNation! 🎉",
+      `Hello ${user.username || "Player"},<br><br>
+       Thank you for signing up! Please verify your email address to start playing Joker with players around the world.`,
+      "verify Email Address",
+      verificationLink,
+    );
+
     const result = await transporter.sendMail({
-      from: process.env.EMAIL,
+      from: `"JokerNation" <${process.env.EMAIL}>`,
       to: user?.email,
-      subject: "Email Verification",
-      html: `<p>Please click the link to <a href="${verificationLink}">verify your email</a>!</p>`,
+      subject: "Verify Your Email - JokerNation",
+      html: htmlContent,
     });
     if (!result) throw new Error("Error Sending Email!");
 
@@ -54,7 +76,7 @@ export const sendVerificationEmail: RequestHandler = async (req, res, next) => {
 export const sendChangePasswordEmail: RequestHandler = async (
   req,
   res,
-  next
+  next,
 ) => {
   try {
     const { email } = req.body;
@@ -65,16 +87,25 @@ export const sendChangePasswordEmail: RequestHandler = async (
     const token = jwt.sign(
       { id: user?._id },
       process.env.JWT_SECRET as string,
-      { expiresIn: "10m" }
+      { expiresIn: "10m" },
     );
 
     const changePasswordLink = `http://localhost:3000/?auth=change-password&token=${token}`;
 
+    const htmlContent = getEmailTemplate(
+      "Reset Your Password",
+      "Password Reset Request 🔐",
+      `Hello ${user.username || "Player"},<br><br>
+       We received a request to reset your password. Click the button below to create a new password.`,
+      "Reset Password",
+      changePasswordLink,
+    );
+
     const result = await transporter.sendMail({
-      from: process.env.EMAIL,
+      from: `"JokerNation" <${process.env.EMAIL}>`,
       to: user?.email,
-      subject: "Change Password",
-      html: `<p>Please click the link to <a href="${changePasswordLink}">change your password</a>!</p>`,
+      subject: "Reset Your Password - JokerNation",
+      html: htmlContent,
     });
     if (!result) throw new Error("Error Sending Email!");
 

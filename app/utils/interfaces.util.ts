@@ -1,6 +1,7 @@
 export interface UserSessionData {
   _id: string;
   username: string;
+  originalUsername: string;
   avatar: string;
   email: string;
   isVerified: boolean;
@@ -12,24 +13,27 @@ declare module "express-session" {
   }
 }
 
+export interface RoomUser {
+  id: string;
+  username: string;
+  status: "active" | "busy" | "inactive" | "left";
+  avatar: string | null;
+  botAvatar: string | null;
+}
+
 export interface Room {
   id: string;
   name: string;
   password: string | null;
   bett: string | null;
-  type: "classic" | "nines" | "betting";
+  type: "classic" | "nines";
   status: "public" | "private";
   hisht: string;
+  hasChat?: boolean;
   isActive?: boolean;
   createdAt: Date;
   lastActivityAt: Date;
-  users: {
-    id: string;
-    username: string;
-    status: "active" | "busy" | "inactive" | "left";
-    avatar: string | null;
-    botAvatar: string | null;
-  }[];
+  users: RoomUser[];
 }
 
 export interface RejoinRoom {
@@ -109,6 +113,7 @@ export interface Round {
   gameHand: number;
   handNumber: number;
   bid: number | null;
+  win: number | null;
   points: {
     value: number;
     isCut: boolean;
@@ -129,10 +134,26 @@ export interface ScoreBoard {
   totalSum: number;
 }
 
+export interface GameTimer {
+  roomId: string;
+  startTime: number;
+  duration: number;
+  isActive: boolean;
+  type: "bid" | "playing" | "trump" | "general";
+  playerId?: string;
+}
+
 export interface Game {
   id: string | null;
   roomId: string;
-  status: "trump" | "waiting" | "dealing" | "bid" | "playing" | "finished";
+  status:
+    | "trump"
+    | "choosingTrump"
+    | "waiting"
+    | "dealing"
+    | "bid"
+    | "playing"
+    | "finished";
   dealerId: string | null;
   players: string[] | null;
   currentPlayerId: string | null;
@@ -151,4 +172,5 @@ export interface Game {
   playedCards: PlayedCard[] | null;
   lastPlayedCards: PlayedCard[] | null;
   scoreBoard: ScoreBoard[] | null;
+  currentTimer?: GameTimer | null;
 }

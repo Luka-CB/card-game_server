@@ -16,8 +16,12 @@ import authRouter from "./routes/auth.route";
 import oauthRouter from "./routes/oauth.route";
 import userRouter from "./routes/user.route";
 import emailRouter from "./routes/email.route";
+import statsRouter from "./routes/userStats.route";
+
 import sessionMiddleware from "./middlewares/session.middleware";
 import { roomCleanupService } from "./socket/roomCleanupService";
+
+import Avatar from "./models/Avatar.model";
 
 connectDB();
 const app = express();
@@ -38,7 +42,7 @@ app.use(
   cors({
     origin: ["http://localhost:3000"],
     credentials: true,
-  })
+  }),
 );
 
 app.set("trust proxy", 1);
@@ -56,7 +60,9 @@ app.use("/api/auth", authRouter);
 app.use("/api/oauth", oauthRouter);
 app.use("/api/users", userRouter);
 app.use("/api/emails", emailRouter);
+app.use("/api/stats", statsRouter);
 
+////////// ERROR MIDDLEWARE //////////
 app.use(errorMiddleware);
 
 socketHandler(io);
@@ -65,7 +71,7 @@ roomCleanupService.start();
 
 process.on("SIGTERM", () => {
   console.log(
-    "SIGTERM recieved, shutting down gracefully...".red.underline.bold
+    "SIGTERM recieved, shutting down gracefully...".red.underline.bold,
   );
   roomCleanupService.stop();
   server.close(() => {
@@ -76,7 +82,7 @@ process.on("SIGTERM", () => {
 
 process.on("SIGINT", () => {
   console.log(
-    "SIGINT recieved, shutting down gracefully...".red.underline.bold
+    "SIGINT recieved, shutting down gracefully...".red.underline.bold,
   );
   roomCleanupService.stop();
   server.close(() => {
@@ -90,6 +96,6 @@ server.listen(PORT, () => {
   console.log(`Server is up and running on port ${PORT}`.cyan.underline.bold);
   console.log(
     `Room cleanup service configuration:`,
-    roomCleanupService.getConfig()
+    roomCleanupService.getConfig(),
   );
 });

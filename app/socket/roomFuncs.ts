@@ -1,5 +1,6 @@
 import redisClient from "../config/redisClient";
 import { Room } from "../utils/interfaces.util";
+import { dealerRevealControllers } from "./gameFlow";
 
 export const addRoom = async (room: Room) => {
   const roomWithActivity = {
@@ -154,6 +155,10 @@ export const destroyRoom = async (roomId: string) => {
   if (gameInfo) {
     await redisClient.hdel("games", roomId);
   }
+
+  const c = dealerRevealControllers[roomId];
+  if (c?.timeout) clearTimeout(c.timeout);
+  delete dealerRevealControllers[roomId];
 
   // Remove the room from Redis
   await redisClient.hdel("rooms", roomId);
