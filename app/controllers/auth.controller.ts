@@ -2,7 +2,6 @@ import { RequestHandler } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import User from "../models/User.model";
 import { generateAccessToken, generateRefreshToken } from "../utils/token.util";
-import { uploadImage } from "../utils/cloudinary.util";
 import bcrypt from "bcrypt";
 
 export const getRefreshToken: RequestHandler = async (req, res, next) => {
@@ -30,7 +29,7 @@ export const getRefreshToken: RequestHandler = async (req, res, next) => {
           success: true,
           accessToken,
         });
-      }
+      },
     );
   } catch (error) {
     next(error);
@@ -41,24 +40,23 @@ export const signup: RequestHandler = async (req, res, next) => {
   try {
     const { username, email, avatar, password } = req.body;
 
-    const existingUsername = await User.findOne({ username });
+    const existingUsername = await User.findOne({
+      username: username.toLowerCase().trim(),
+    });
     if (existingUsername) throw new Error("This username already exists");
 
-    const existingUserEmail = await User.findOne({ email });
+    const existingUserEmail = await User.findOne({
+      email: email.trim(),
+    });
     if (existingUserEmail) {
       throw new Error("This email already exists");
     }
 
-    let result: any;
-    if (avatar) {
-      result = await uploadImage(avatar, "avatars");
-    }
-
     const user = await User.create({
-      username,
+      username: username.toLowerCase(),
+      originalUsername: username,
       email,
-      avatar: result?.secure_url || "",
-      avatarId: result?.public_id || "",
+      avatar,
       password,
     });
 
@@ -69,6 +67,7 @@ export const signup: RequestHandler = async (req, res, next) => {
     const userData = {
       _id: user._id,
       username: user.username,
+      originalUsername: user.originalUsername,
       avatar: user.avatar,
       email: user.email,
       isVerified: user.isVerified,
@@ -89,14 +88,17 @@ export const signin: RequestHandler = async (req, res, next) => {
   try {
     const { username, password } = req.body;
 
-    const user = await User.findOne({ username });
+    const user = await User.findOne({
+      username: username.toLowerCase().trim(),
+    });
     if (!user) throw new Error("Username is Incorrect!");
-    if (!(await user.matchPasswords(password)))
+    if (!(await user.matchPasswords(password.trim())))
       throw new Error("Password is Incorrect!");
 
     const userData = {
       _id: user._id,
       username: user.username,
+      originalUsername: user.originalUsername,
       avatar: user.avatar,
       email: user.email,
       isVerified: user.isVerified,
@@ -115,7 +117,7 @@ export const changePassword: RequestHandler = async (req, res, next) => {
     const { password, token } = req.body;
     const decoded = jwt.verify(
       token as string,
-      process.env.JWT_SECRET as string
+      process.env.JWT_SECRET as string,
     ) as JwtPayload;
 
     const salt = await bcrypt.genSalt(10);
@@ -123,7 +125,7 @@ export const changePassword: RequestHandler = async (req, res, next) => {
 
     const updatedUser = await User.updateOne(
       { _id: decoded.id },
-      { password: hashedPassword }
+      { password: hashedPassword },
     );
     if (!updatedUser) throw new Error("Request has failed!");
 

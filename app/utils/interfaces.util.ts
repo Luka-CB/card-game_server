@@ -1,6 +1,7 @@
 export interface UserSessionData {
   _id: string;
   username: string;
+  originalUsername: string;
   avatar: string;
   email: string;
   isVerified: boolean;
@@ -28,6 +29,7 @@ export interface Room {
   type: "classic" | "nines";
   status: "public" | "private";
   hisht: string;
+  hasChat?: boolean;
   isActive?: boolean;
   createdAt: Date;
   lastActivityAt: Date;

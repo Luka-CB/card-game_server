@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 export interface UserStatsIFace {
   _id: string;
   userId: string;
-  credits: number;
+  jCoins: number;
   gamesPlayed: number;
   gamesFinished: {
     first: number;
@@ -18,7 +18,7 @@ export interface UserStatsIFace {
 const userStatsSchema = new mongoose.Schema<UserStatsIFace>(
   {
     userId: mongoose.Schema.Types.ObjectId,
-    credits: {
+    jCoins: {
       type: Number,
       default: 0,
     },
