@@ -1,6 +1,7 @@
 import { RequestHandler } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import User from "../models/User.model";
+import UserStats from "../models/UserStats.model";
 import { generateAccessToken, generateRefreshToken } from "../utils/token.util";
 import bcrypt from "bcrypt";
 
@@ -63,6 +64,20 @@ export const signup: RequestHandler = async (req, res, next) => {
     if (!user) {
       throw new Error("User not found");
     }
+
+    await UserStats.create({
+      userId: user._id,
+      jCoins: 1000,
+      gamesPlayed: 0,
+      gamesFinished: {
+        first: 0,
+        second: 0,
+        third: 0,
+        fourth: 0,
+      },
+      gamesLeft: 0,
+      rating: 0,
+    });
 
     const userData = {
       _id: user._id,

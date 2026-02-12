@@ -67,6 +67,7 @@ app.use(errorMiddleware);
 
 socketHandler(io);
 
+roomCleanupService.setIO(io);
 roomCleanupService.start();
 
 process.on("SIGTERM", () => {

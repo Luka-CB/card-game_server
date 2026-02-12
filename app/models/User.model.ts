@@ -7,7 +7,6 @@ export interface UserIFace {
   originalUsername: string;
   email: string;
   avatar: string;
-  avatarId: string;
   provider: "local" | "google" | "facebook";
   providerId: string;
   password: string;
@@ -37,9 +36,6 @@ const userSchema = new mongoose.Schema<UserIFace>(
       trim: true,
     },
     avatar: {
-      type: String,
-    },
-    avatarId: {
       type: String,
     },
     provider: {

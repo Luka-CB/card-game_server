@@ -1,5 +1,6 @@
 import passport from "passport";
 import User from "../models/User.model";
+import UserStats from "../models/UserStats.model";
 
 import googleOauth from "passport-google-oauth20";
 
@@ -36,6 +37,21 @@ passport.use(
             isVerified: true,
           });
 
+          const newUserStat = await UserStats.create({
+            userId: user._id,
+            jCoins: 1000,
+            gamesPlayed: 0,
+            gamesFinished: {
+              first: 0,
+              second: 0,
+              third: 0,
+              fourth: 0,
+            },
+            gamesLeft: 0,
+            rating: 0,
+          });
+          if (!newUserStat) throw new Error("Failed to initialize user stats!");
+
           return done(null, user);
         }
       } catch (error) {
@@ -47,8 +63,8 @@ passport.use(
           return done(new Error("An unknown error occurred"), false);
         }
       }
-    }
-  )
+    },
+  ),
 );
 
 passport.serializeUser((user, done) => done(null, user));

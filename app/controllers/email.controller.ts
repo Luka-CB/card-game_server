@@ -20,12 +20,6 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
     );
     if (!updatedUser) throw new Error("Request has failed!");
 
-    const updateUserStats = await UserStats.updateOne(
-      { userId: decoded.id },
-      { jCoins: 1000 },
-    );
-    if (!updateUserStats) throw new Error("Failed to initialize user stats!");
-
     if (req.session.user && req.session.user._id === decoded.id) {
       req.session.user.isVerified = true;
       req.session.save();
@@ -53,7 +47,7 @@ export const sendVerificationEmail: RequestHandler = async (req, res, next) => {
     const htmlContent = getEmailTemplate(
       "Verify Your Email",
       "Welcome to JokerNation! 🎉",
-      `Hello ${user.username || "Player"},<br><br>
+      `Hello ${user.originalUsername || "Player"},<br><br>
        Thank you for signing up! Please verify your email address to start playing Joker with players around the world.`,
       "verify Email Address",
       verificationLink,
@@ -95,7 +89,7 @@ export const sendChangePasswordEmail: RequestHandler = async (
     const htmlContent = getEmailTemplate(
       "Reset Your Password",
       "Password Reset Request 🔐",
-      `Hello ${user.username || "Player"},<br><br>
+      `Hello ${user.originalUsername || "Player"},<br><br>
        We received a request to reset your password. Click the button below to create a new password.`,
       "Reset Password",
       changePasswordLink,

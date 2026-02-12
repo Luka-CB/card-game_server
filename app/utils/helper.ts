@@ -60,6 +60,33 @@ export const calculateRating = (userStats: UserStatsIFace): number => {
   return Math.round(rating * 10) / 10;
 };
 
+export const calculateRatingTrend = (
+  ratingHistory: { rating: number; timestamp: Date }[],
+): "up" | "down" | "stable" => {
+  if (!ratingHistory || ratingHistory.length < 2) {
+    return "stable";
+  }
+
+  const recentHistory = ratingHistory.slice(-5);
+
+  if (recentHistory.length < 2) {
+    return "stable";
+  }
+
+  const currentRating = recentHistory[recentHistory.length - 1].rating;
+  const previousRatings = recentHistory.slice(0, -1);
+  const avgPreviousRating =
+    previousRatings.reduce((sum, h) => sum + h.rating, 0) /
+    previousRatings.length;
+
+  const difference = currentRating - avgPreviousRating;
+  const threshold = 0.1;
+
+  if (difference > threshold) return "up";
+  if (difference < -threshold) return "down";
+  return "stable";
+};
+
 export const getEmailTemplate = (
   title: string,
   heading: string,

@@ -1,18 +1,20 @@
 import express from "express";
 import {
-  getCredits,
+  getJCoins,
+  getUserRating,
   getUserStats,
-  updateCredits,
+  updateJCoins,
   updateStats,
 } from "../controllers/userStats.controller";
 import { isAuthenticated } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
-router.post("/update-credits", isAuthenticated, updateCredits);
-router.get("/get-credits", isAuthenticated, getCredits);
+router.post("/update-jCoins", isAuthenticated, updateJCoins);
+router.get("/get-jCoins", isAuthenticated, getJCoins);
 
 router.post("/update-stats", isAuthenticated, updateStats);
 router.get("/get-stats", isAuthenticated, getUserStats);
+router.get("/get-rating", isAuthenticated, getUserRating);
 
 export default router;

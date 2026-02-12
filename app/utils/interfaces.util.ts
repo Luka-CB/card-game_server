@@ -19,6 +19,10 @@ export interface RoomUser {
   status: "active" | "busy" | "inactive" | "left";
   avatar: string | null;
   botAvatar: string | null;
+  color: {
+    value: string;
+    textColor: string;
+  };
 }
 
 export interface Room {
@@ -173,4 +177,25 @@ export interface Game {
   lastPlayedCards: PlayedCard[] | null;
   scoreBoard: ScoreBoard[] | null;
   currentTimer?: GameTimer | null;
+}
+
+export interface chatUser {
+  id: string;
+  username: string;
+  avatar: string | null;
+  color: { value: string; textColor: string } | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: chatUser;
+  content: string;
+  timestamp: Date;
+}
+
+export interface ChatRoom {
+  roomId: string;
+  unreadMessages: { [userId: string]: number };
+  messages: ChatMessage[];
+  hasChatOpen: { [userId: string]: boolean };
 }
