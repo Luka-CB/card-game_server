@@ -1,44 +1,58 @@
 import { RequestHandler } from "express";
 import UserStats from "../models/UserStats.model";
-import { calculateRating } from "../utils/helper";
+import { calculateRating, calculateRatingTrend } from "../utils/helper";
 
-export const updateCredits: RequestHandler = async (req, res, next) => {
+export const updateJCoins: RequestHandler = async (req, res, next) => {
   try {
     const user = req.session.user;
-    const { credits } = req.body;
+    const { jCoins } = req.body;
     if (!user) throw new Error("Session user not found!");
 
-    const userCredits = await UserStats.findOne({ userId: user._id });
-    if (!userCredits) throw new Error("User stats not found!");
+    const userJCoins = await UserStats.findOne({ userId: user._id });
+    if (!userJCoins) throw new Error("User stats not found!");
 
-    const newCredits =
-      credits > 0
-        ? userCredits.credits + credits
-        : userCredits.credits - credits;
+    const newJCoins =
+      jCoins > 0 ? userJCoins.jCoins + jCoins : userJCoins.jCoins - jCoins;
 
     const updateUserStats = await UserStats.updateOne(
       { userId: user._id },
-      { credits: newCredits },
+      { jCoins: newJCoins },
     );
-    if (!updateUserStats) throw new Error("Failed to update user credits!");
+    if (!updateUserStats) throw new Error("Failed to update user jCoins!");
 
-    res.status(200).json({ success: true, credits: newCredits });
+    res.status(200).json({ success: true, jCoins: newJCoins });
   } catch (error) {
     next(error);
   }
 };
 
-export const getCredits: RequestHandler = async (req, res, next) => {
+export const getJCoins: RequestHandler = async (req, res, next) => {
   try {
     const user = req.session.user;
     if (!user) throw new Error("Session user not found!");
 
-    const credits = await UserStats.findOne({ userId: user._id }).select(
-      "credits",
+    const UserStat = await UserStats.findOne({ userId: user._id }).select(
+      "jCoins",
     );
-    if (!credits) throw new Error("User stats not found!");
+    if (!UserStat) throw new Error("User stats not found!");
 
-    res.status(200).json({ success: true, credits: credits.credits });
+    const formatCoins = (coins: number): string => {
+      if (coins >= 1000) {
+        const thousands = coins / 1000;
+        return thousands % 1 === 0
+          ? `${thousands}k`
+          : `${thousands.toFixed(1)}k`;
+      }
+      return coins.toFixed();
+    };
+
+    res
+      .status(200)
+      .json({
+        success: true,
+        jCoins: formatCoins(UserStat.jCoins),
+        rawJCoins: UserStat.jCoins,
+      });
   } catch (error) {
     next(error);
   }
@@ -85,18 +99,32 @@ export const updateStats: RequestHandler = async (req, res, next) => {
       ...newStats,
     });
 
+    const newRatingHistory = [
+      ...userStats.ratingHistory,
+      { rating: newRating, timestamp: new Date() },
+    ];
+
+    const trimmedHistory = newRatingHistory.slice(-20);
+    const trend = calculateRatingTrend(trimmedHistory);
+
     const updateUserStats = await UserStats.findOneAndUpdate(
       { userId: user._id },
       {
         ...newStats,
         rating: newRating,
+        ratingHistory: trimmedHistory,
+        ratingTrend: trend,
       },
       { new: true },
     );
 
     if (!updateUserStats) throw new Error("Failed to update user stats!");
 
-    res.status(200).json({ success: true, stats: updateUserStats });
+    res.status(200).json({
+      success: true,
+      stats: updateUserStats,
+      ratingChange: newRating - userStats.rating,
+    });
   } catch (error) {
     next(error);
   }
@@ -111,6 +139,24 @@ export const getUserStats: RequestHandler = async (req, res, next) => {
     if (!stats) throw new Error("User stats not found!");
 
     res.status(200).json({ success: true, stats });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getUserRating: RequestHandler = async (req, res, next) => {
+  try {
+    const user = req.session.user;
+    if (!user) throw new Error("Session user not found!");
+
+    const stats = await UserStats.findOne({ userId: user._id }).select(
+      "rating ratingTrend",
+    );
+    if (!stats) throw new Error("User stats not found!");
+
+    res
+      .status(200)
+      .json({ success: true, rating: stats.rating, trend: stats.ratingTrend });
   } catch (error) {
     next(error);
   }

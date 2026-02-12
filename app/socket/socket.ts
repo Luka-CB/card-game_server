@@ -3,6 +3,7 @@ import session from "express-session";
 import sessionMiddleware from "../middlewares/session.middleware";
 import {
   Card,
+  ChatMessage,
   Game,
   PlayedCard,
   PlayingCard,
@@ -29,6 +30,7 @@ import {
 import {
   addRoom,
   destroyRoom,
+  getRoom,
   getRooms,
   handleRoomLeave,
   joinRoom,
@@ -60,6 +62,13 @@ import {
   trackJoinPresence,
   trackLeavePresence,
 } from "./trackActivity";
+import {
+  addChatMessage,
+  createChat,
+  destroyChat,
+  getChatByRoomId,
+  toggleChatOpen,
+} from "./chatFuncs";
 
 declare module "http" {
   interface IncomingMessage {
@@ -111,6 +120,7 @@ const socketHandler = (io: Server) => {
   });
 
   io.on("connection", (socket: Socket) => {
+    // ROOM SOCKETS
     socket.on("getRooms", async () => {
       const rooms = await getRooms();
       if (rooms) {
@@ -137,7 +147,7 @@ const socketHandler = (io: Server) => {
             trackJoinPresence(roomId, userId, socket.id);
 
             const currentStatus = foundRoom.users.find(
-              (u: RoomUser) => u.id === userId
+              (u: RoomUser) => u.id === userId,
             )?.status;
             if (currentStatus !== "active") {
               await updateUserStatus(roomId, userId, "active");
@@ -167,11 +177,73 @@ const socketHandler = (io: Server) => {
     });
 
     socket.on(
+      "joinRoom",
+      async (
+        roomId: string,
+        userId: string,
+        userData: {
+          id: string;
+          username: string;
+          status: "active" | "busy" | "inactive" | "left";
+          avatar: string | null;
+          botAvatar: string | null;
+          color: { value: string; textColor: string } | null;
+        },
+      ) => {
+        try {
+          if (roomId && userId && userData) {
+            const newUserData = { ...userData, status: "active" as const };
+            await joinRoom(roomId, userId, newUserData);
+
+            socket.join(roomId);
+            trackJoinPresence(roomId, userId, socket.id);
+
+            await broadcastRoomUpdate(roomId, io);
+          }
+        } catch (error: any) {
+          console.log("join room error", error);
+          socket.emit("error", error.message);
+        }
+      },
+    );
+
+    socket.on("leaveRoom", async (roomId: string, userId: string) => {
+      if (roomId && userId) {
+        await handleRoomLeave(roomId, userId);
+        socket.leave(roomId);
+
+        const k = roomUserKey(roomId, userId);
+        if (pendingBusyByRoomUser[k]) {
+          clearTimeout(pendingBusyByRoomUser[k]);
+          delete pendingBusyByRoomUser[k];
+        }
+        trackLeavePresence(roomId, userId, socket.id);
+
+        const updatedRooms = await getRooms();
+        io.emit("getRooms", updatedRooms);
+        const updatedRoom = updatedRooms.find((r) => r.id === roomId);
+        if (updatedRoom) {
+          io.to(roomId).emit("getRoom", updatedRoom);
+        }
+      }
+    });
+
+    socket.on("destroyRoom", async (roomId: string) => {
+      if (roomId) {
+        await destroyRoom(roomId);
+        await removeRoundCount(roomId);
+        socket.leave(roomId);
+        const updatedRooms = await getRooms();
+        io.emit("getRooms", updatedRooms);
+      }
+    });
+
+    socket.on(
       "updateUserStatus",
       async (
         roomId: string,
         userId: string,
-        status: "active" | "busy" | "inactive" | "left"
+        status: "active" | "busy" | "inactive" | "left",
       ) => {
         if (roomId && userId && status) {
           await updateUserStatus(roomId, userId, status);
@@ -184,7 +256,167 @@ const socketHandler = (io: Server) => {
             }
           }
         }
+      },
+    );
+
+    // GAME SOCKETS
+    socket.on("getGameInfo", async (roomId: string) => {
+      let gameInfo = await getGameInfo(roomId);
+      if (!gameInfo) {
+        console.log(`[getGameInfo] Creating new game for room ${roomId}`);
+        gameInfo = await createGameInfo(roomId);
+        io.to(roomId).emit("getGameInfo", gameInfo);
+        // Start the game loop for the first time
+        setTimeout(async () => {
+          await handleGameState(roomId, io);
+        }, 1000);
+      } else {
+        socket.emit("getGameInfo", gameInfo);
+
+        // If game is in "dealing" with no dealer, try to restart the flow
+        if (gameInfo.status === "dealing" && !gameInfo.dealerId) {
+          console.log(
+            `[getGameInfo] Game already exists but no dealer. Starting dealer determination.`,
+          );
+          setTimeout(async () => {
+            await handleGameState(roomId, io);
+          }, 200);
+        }
       }
+    });
+
+    socket.on("updateGameInfo", async (roomId: string, gameInfo: Game) => {
+      if (roomId && gameInfo) {
+        await updateGameInfo(roomId, gameInfo);
+        const updatedGameInfo = await getGameInfo(roomId);
+        if (updatedGameInfo) {
+          io.to(roomId).emit("getGameInfo", updatedGameInfo);
+          // After any update, let the central handle decide what's next.
+          await handleGameState(roomId, io);
+        }
+      }
+    });
+
+    socket.on("removeGameInfo", async (roomId: string) => {
+      if (roomId) {
+        await removeGameInfo(roomId);
+      }
+    });
+
+    socket.on("createScoreBoard", async (roomId: string) => {
+      const scoreBoard = await createScoreBoard(roomId);
+      if (scoreBoard) {
+        const gameInfo = await getGameInfo(roomId);
+        if (gameInfo) {
+          io.to(roomId).emit("getGameInfo", gameInfo);
+        }
+      }
+    });
+
+    socket.on(
+      "updateBids",
+      async (
+        roomId: string,
+        bid: {
+          playerId: string;
+          bid: number;
+          gameHand: number;
+        },
+      ) => {
+        if (roomId && bid) {
+          const updatedBid = await updateBids(roomId, bid);
+
+          if (updatedBid) {
+            await trackActivity(roomId);
+            removeTimer(roomId, updatedBid.playerId);
+
+            const latest = await getGameInfo(roomId);
+            if (!latest) return;
+            io.to(roomId).emit("getGameInfo", latest);
+
+            setTimeout(() => handleGameState(roomId, io), 0);
+          }
+        }
+      },
+    );
+
+    socket.on(
+      "updateWins",
+      async (
+        roomId: string,
+        win: { playerId: string; win: number; gameHand: number },
+      ) => {
+        if (roomId && win) {
+          const updatedWin = await updateWins(roomId, win);
+
+          await trackActivity(roomId);
+
+          if (updatedWin) {
+            const gameInfo = await getGameInfo(roomId);
+            if (gameInfo) {
+              io.to(roomId).emit("getGameInfo", gameInfo);
+            }
+          }
+        }
+      },
+    );
+
+    socket.on("dealingAnimationDone", async (roomId: string) => {
+      if (!roomId) return;
+
+      const gi = await getGameInfo(roomId);
+      if (!gi) return;
+
+      if (gi.currentHand === 9) {
+        const nextStatus = gi.trumpCard ? "bid" : "choosingTrump";
+        await updateGameInfo(roomId, { status: nextStatus });
+      } else {
+        await updateGameInfo(roomId, { status: "trump" });
+      }
+
+      const updated = await getGameInfo(roomId);
+      if (updated) io.to(roomId).emit("getGameInfo", updated);
+
+      setTimeout(() => handleGameState(roomId, io), 0);
+    });
+
+    socket.on(
+      "playCard",
+      async (data: { roomId: string; playerId: string; card: Card }) => {
+        const { roomId, playerId, card } = data;
+        if (!roomId || !playerId || !card) return;
+
+        await removeCardFromHand(roomId, playerId, card);
+        await setPlayedCards(roomId, playerId, card);
+        removeTimer(roomId, playerId);
+        await trackActivity(roomId);
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        let latest = await getGameInfo(roomId);
+        if (!latest) {
+          console.error(
+            `[playCard] Failed to fetch game info for room ${roomId}`,
+          );
+          return;
+        }
+
+        if (latest.playedCards && latest.playedCards.length === 4) {
+          await handleEndRound(roomId, latest, io);
+        } else {
+          const playerIndex =
+            latest.players.findIndex((p: string) => p === playerId) || 0;
+          const nextPlayerId =
+            latest.players[(playerIndex + 1) % latest.players.length];
+
+          await updateGameInfo(roomId, { currentPlayerId: nextPlayerId });
+
+          latest = await getGameInfo(roomId);
+          if (!latest) return;
+          io.to(roomId).emit("getGameInfo", latest);
+
+          setTimeout(() => handleGameState(roomId, io), 0);
+        }
+      },
     );
 
     socket.on(
@@ -200,7 +432,7 @@ const socketHandler = (io: Server) => {
             io.to(data.roomId).emit("getGameInfo", updatedGameInfo);
           }
         }
-      }
+      },
     );
 
     socket.on(
@@ -216,7 +448,7 @@ const socketHandler = (io: Server) => {
             io.to(roomId).emit("getGameInfo", updatedGameInfo);
           }
         }
-      }
+      },
     );
 
     socket.on("clearPlayedCards", async (roomId: string) => {
@@ -245,218 +477,8 @@ const socketHandler = (io: Server) => {
             io.to(data.roomId).emit("getGameInfo", updatedGameInfo);
           }
         }
-      }
+      },
     );
-
-    socket.on("leaveRoom", async (roomId: string, userId: string) => {
-      if (roomId && userId) {
-        await handleRoomLeave(roomId, userId);
-        socket.leave(roomId);
-
-        const k = roomUserKey(roomId, userId);
-        if (pendingBusyByRoomUser[k]) {
-          clearTimeout(pendingBusyByRoomUser[k]);
-          delete pendingBusyByRoomUser[k];
-        }
-        trackLeavePresence(roomId, userId, socket.id);
-
-        const updatedRooms = await getRooms();
-        io.emit("getRooms", updatedRooms);
-        const updatedRoom = updatedRooms.find((r) => r.id === roomId);
-        if (updatedRoom) {
-          io.to(roomId).emit("getRoom", updatedRoom);
-        }
-      }
-    });
-
-    socket.on(
-      "joinRoom",
-      async (
-        roomId: string,
-        userId: string,
-        userData: {
-          id: string;
-          username: string;
-          status: "active" | "busy" | "inactive" | "left";
-          avatar: string | null;
-          botAvatar: string | null;
-        }
-      ) => {
-        try {
-          if (roomId && userId && userData) {
-            const newUserData = { ...userData, status: "active" as const };
-            await joinRoom(roomId, userId, newUserData);
-
-            socket.join(roomId);
-            trackJoinPresence(roomId, userId, socket.id);
-
-            await broadcastRoomUpdate(roomId, io);
-          }
-        } catch (error: any) {
-          console.log("join room error", error);
-          socket.emit("error", error.message);
-        }
-      }
-    );
-
-    socket.on("dealingAnimationDone", async (roomId: string) => {
-      if (!roomId) return;
-
-      const gi = await getGameInfo(roomId);
-      if (!gi) return;
-
-      if (gi.currentHand === 9) {
-        const nextStatus = gi.trumpCard ? "bid" : "choosingTrump";
-        await updateGameInfo(roomId, { status: nextStatus });
-      } else {
-        await updateGameInfo(roomId, { status: "trump" });
-      }
-
-      const updated = await getGameInfo(roomId);
-      if (updated) io.to(roomId).emit("getGameInfo", updated);
-
-      setTimeout(() => handleGameState(roomId, io), 0);
-    });
-
-    socket.on("getGameInfo", async (roomId: string) => {
-      let gameInfo = await getGameInfo(roomId);
-      if (!gameInfo) {
-        console.log(`[getGameInfo] Creating new game for room ${roomId}`);
-        gameInfo = await createGameInfo(roomId);
-        io.to(roomId).emit("getGameInfo", gameInfo);
-        // Start the game loop for the first time
-        setTimeout(async () => {
-          await handleGameState(roomId, io);
-        }, 1000);
-      } else {
-        socket.emit("getGameInfo", gameInfo);
-
-        // If game is in "dealing" with no dealer, try to restart the flow
-        if (gameInfo.status === "dealing" && !gameInfo.dealerId) {
-          console.log(
-            `[getGameInfo] Game already exists but no dealer. Starting dealer determination.`
-          );
-          setTimeout(async () => {
-            await handleGameState(roomId, io);
-          }, 200);
-        }
-      }
-    });
-
-    socket.on("removeGameInfo", async (roomId: string) => {
-      if (roomId) {
-        await removeGameInfo(roomId);
-      }
-    });
-
-    socket.on("updateGameInfo", async (roomId: string, gameInfo: Game) => {
-      if (roomId && gameInfo) {
-        await updateGameInfo(roomId, gameInfo);
-        const updatedGameInfo = await getGameInfo(roomId);
-        if (updatedGameInfo) {
-          io.to(roomId).emit("getGameInfo", updatedGameInfo);
-          // After any update, let the central handle decide what's next.
-          await handleGameState(roomId, io);
-        }
-      }
-    });
-
-    socket.on(
-      "updateBids",
-      async (
-        roomId: string,
-        bid: {
-          playerId: string;
-          bid: number;
-          gameHand: number;
-        }
-      ) => {
-        if (roomId && bid) {
-          const updatedBid = await updateBids(roomId, bid);
-
-          if (updatedBid) {
-            await trackActivity(roomId);
-            removeTimer(roomId, updatedBid.playerId);
-
-            const latest = await getGameInfo(roomId);
-            if (!latest) return;
-            io.to(roomId).emit("getGameInfo", latest);
-
-            setTimeout(() => handleGameState(roomId, io), 0);
-          }
-        }
-      }
-    );
-
-    socket.on(
-      "playCard",
-      async (data: { roomId: string; playerId: string; card: Card }) => {
-        const { roomId, playerId, card } = data;
-        if (!roomId || !playerId || !card) return;
-
-        await removeCardFromHand(roomId, playerId, card);
-        await setPlayedCards(roomId, playerId, card);
-        removeTimer(roomId, playerId);
-        await trackActivity(roomId);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        let latest = await getGameInfo(roomId);
-        if (!latest) {
-          console.error(
-            `[playCard] Failed to fetch game info for room ${roomId}`
-          );
-          return;
-        }
-
-        if (latest.playedCards && latest.playedCards.length === 4) {
-          await handleEndRound(roomId, latest, io);
-        } else {
-          const playerIndex =
-            latest.players.findIndex((p: string) => p === playerId) || 0;
-          const nextPlayerId =
-            latest.players[(playerIndex + 1) % latest.players.length];
-
-          await updateGameInfo(roomId, { currentPlayerId: nextPlayerId });
-
-          latest = await getGameInfo(roomId);
-          if (!latest) return;
-          io.to(roomId).emit("getGameInfo", latest);
-
-          setTimeout(() => handleGameState(roomId, io), 0);
-        }
-      }
-    );
-
-    socket.on(
-      "updateWins",
-      async (
-        roomId: string,
-        win: { playerId: string; win: number; gameHand: number }
-      ) => {
-        if (roomId && win) {
-          const updatedWin = await updateWins(roomId, win);
-
-          await trackActivity(roomId);
-
-          if (updatedWin) {
-            const gameInfo = await getGameInfo(roomId);
-            if (gameInfo) {
-              io.to(roomId).emit("getGameInfo", gameInfo);
-            }
-          }
-        }
-      }
-    );
-
-    socket.on("destroyRoom", async (roomId: string) => {
-      if (roomId) {
-        await destroyRoom(roomId);
-        await removeRoundCount(roomId);
-        socket.leave(roomId);
-        const updatedRooms = await getRooms();
-        io.emit("getRooms", updatedRooms);
-      }
-    });
 
     socket.on("removeTimer", (roomId: string, playerId: string) => {
       if (!roomId || !playerId) return;
@@ -495,7 +517,7 @@ const socketHandler = (io: Server) => {
         } else {
           io.to(roomId).emit("getGameInfo", gameInfo);
         }
-      }
+      },
     );
 
     socket.on("getRoundCount", async (roomId: string) => {
@@ -521,16 +543,74 @@ const socketHandler = (io: Server) => {
       }
     });
 
-    socket.on("createScoreBoard", async (roomId: string) => {
-      const scoreBoard = await createScoreBoard(roomId);
-      if (scoreBoard) {
-        const gameInfo = await getGameInfo(roomId);
-        if (gameInfo) {
-          io.to(roomId).emit("getGameInfo", gameInfo);
-        }
+    // CHAT SOCKETS
+    socket.on("createChat", async (roomId: string) => {
+      const room = await getRoom(roomId);
+      if (!room || !room.hasChat) return;
+      await createChat(roomId);
+    });
+
+    socket.on("getChat", async (roomId: string) => {
+      const chat = await getChatByRoomId(roomId);
+      if (chat) {
+        socket.emit("getChat", chat);
+      } else {
+        socket.emit("error", "Chat not found");
       }
     });
 
+    socket.on("addChatMessage", async (roomId: string, msg: ChatMessage) => {
+      if (!roomId || !msg) return;
+
+      await addChatMessage(msg, roomId);
+      const updatedChat = await getChatByRoomId(roomId);
+      if (updatedChat) {
+        io.in(roomId).emit("getChat", updatedChat);
+
+        const popupData = {
+          playerId: msg.sender.id,
+          message: msg.content,
+          timestamp: msg.timestamp,
+        };
+
+        io.in(roomId).emit("chatMessagePopup", popupData);
+      }
+    });
+
+    socket.on("toggleChatOpen", async (roomId: string, userId: string) => {
+      if (!roomId || !userId) return;
+
+      await toggleChatOpen(roomId, userId);
+      const updatedChat = await getChatByRoomId(roomId);
+      if (updatedChat) {
+        io.in(roomId).emit("getChat", updatedChat);
+      }
+    });
+
+    socket.on("destroyChat", async (roomId: string) => {
+      if (!roomId) return;
+      await destroyChat(roomId);
+    });
+
+    socket.on(
+      "sendEmoji",
+      async (
+        roomId: string,
+        emojiData: { playerId: string; emoji: string },
+      ) => {
+        if (!roomId || !emojiData) return;
+
+        const popupData = {
+          playerId: emojiData.playerId,
+          emoji: emojiData.emoji,
+          timestamp: new Date(),
+        };
+
+        io.in(roomId).emit("emojiPopup", popupData);
+      },
+    );
+
+    // DISCONNECT HANDLING
     socket.on("disconnect", async () => {
       const userId = socket.user?._id;
       if (!userId) return;

@@ -1,18 +1,24 @@
 import { getRooms, destroyRoom } from "./roomFuncs";
 import { removeRoundCount } from "./gameFuncs";
 import { Room } from "../utils/interfaces.util";
+import { Server } from "socket.io";
 
 class RoomCleanupService {
   private intervalId: NodeJS.Timeout | null = null;
   private readonly checkIntervalMs: number;
   private readonly inactivitythresholdMs: number;
+  private io: Server | null = null;
 
   constructor(
     checkIntervalMinutes: number = 5,
-    inactivitythresholdMinutes: number = 30
+    inactivitythresholdMinutes: number = 30,
   ) {
     this.checkIntervalMs = checkIntervalMinutes * 60 * 1000;
     this.inactivitythresholdMs = inactivitythresholdMinutes * 60 * 1000;
+  }
+
+  setIO(io: Server): void {
+    this.io = io;
   }
 
   start(): void {
@@ -26,7 +32,7 @@ class RoomCleanupService {
         this.checkIntervalMs / 60000
       } minutes for rooms inactive for more than ${
         this.inactivitythresholdMs / 60000
-      } minutes.`
+      } minutes.`,
     );
 
     this.cleanup();
@@ -60,7 +66,7 @@ class RoomCleanupService {
 
         if (!roomWithActivity.lastActivityAt) {
           console.log(
-            `Room ${room.id} has no lastActivityAt timestamp. Skipping cleanup.`
+            `Room ${room.id} has no lastActivityAt timestamp. Skipping cleanup.`,
           );
           continue;
         }
@@ -71,8 +77,8 @@ class RoomCleanupService {
         if (timeSinceActivity > this.inactivitythresholdMs) {
           console.log(
             `Room ${room.id} (${room.name}) is inactive for ${Math.round(
-              timeSinceActivity / 60000
-            )} minutes - marking for deletion`
+              timeSinceActivity / 60000,
+            )} minutes - marking for deletion`,
           );
           roomsToDelete.push(room.id);
         }
@@ -94,8 +100,13 @@ class RoomCleanupService {
 
   private async deleteInactiveRoom(roomId: string): Promise<void> {
     try {
+      if (this.io) {
+        this.io.to(roomId).emit("roomDestroyed", { roomId });
+      }
+
       await destroyRoom(roomId);
       await removeRoundCount(roomId);
+
       console.log(`Successfully deleted inactive room: ${roomId}`);
     } catch (error) {
       console.log(`Error deleting inactive room ${roomId}:`, error);

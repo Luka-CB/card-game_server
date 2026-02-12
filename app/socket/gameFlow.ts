@@ -357,41 +357,41 @@ export const handleGameState = async (roomId: string, io: Server) => {
 
     switch (gameInfo.status) {
       case "dealing": {
-        if (!gameInfo.dealerId) {
-          if (
-            dealerRevealControllers[roomId]?.isActive ||
-            dealerRevealControllers[roomId]?.timeout
-          )
-            return;
-          await handleDetermineDealer(roomId, io);
-          return;
-        }
+        // if (!gameInfo.dealerId) {
+        //   if (
+        //     dealerRevealControllers[roomId]?.isActive ||
+        //     dealerRevealControllers[roomId]?.timeout
+        //   )
+        //     return;
+        //   await handleDetermineDealer(roomId, io);
+        //   return;
+        // }
 
-        if (!gameInfo.hands || gameInfo.hands.length === 0) {
-          const room = await getRoom(roomId);
-          const gameType = (room?.type as "classic" | "nines") || "classic";
-          const round = getHandNumber(gameInfo.handCount || 1, gameType);
+        // if (!gameInfo.hands || gameInfo.hands.length === 0) {
+        //   const room = await getRoom(roomId);
+        //   const gameType = (room?.type as "classic" | "nines") || "classic";
+        //   const round = getHandNumber(gameInfo.handCount || 1, gameType);
 
-          await handleStartRound(roomId, round, io);
-          return;
-        } else if (
-          gameInfo.currentHand === 9 &&
-          !gameInfo.trumpCard &&
-          gameInfo.hands.every((h: any) => h.hand.length === 3)
-        ) {
-          const dealerIndex = gameInfo.players.indexOf(
-            gameInfo.dealerId as string,
-          );
-          const nextPlayerId =
-            gameInfo.players[(dealerIndex + 1) % gameInfo.players.length];
+        //   await handleStartRound(roomId, round, io);
+        //   return;
+        // } else if (
+        //   gameInfo.currentHand === 9 &&
+        //   !gameInfo.trumpCard &&
+        //   gameInfo.hands.every((h: any) => h.hand.length === 3)
+        // ) {
+        //   const dealerIndex = gameInfo.players.indexOf(
+        //     gameInfo.dealerId as string,
+        //   );
+        //   const nextPlayerId =
+        //     gameInfo.players[(dealerIndex + 1) % gameInfo.players.length];
 
-          await updateGameInfo(roomId, {
-            status: "choosingTrump",
-            currentPlayerId: nextPlayerId,
-          });
-          io.to(roomId).emit("getGameInfo", await getGameInfo(roomId));
-          setTimeout(() => handleGameState(roomId, io), 0);
-        }
+        //   await updateGameInfo(roomId, {
+        //     status: "choosingTrump",
+        //     currentPlayerId: nextPlayerId,
+        //   });
+        //   io.to(roomId).emit("getGameInfo", await getGameInfo(roomId));
+        //   setTimeout(() => handleGameState(roomId, io), 0);
+        // }
         return;
       }
 

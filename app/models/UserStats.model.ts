@@ -13,6 +13,8 @@ export interface UserStatsIFace {
   };
   gamesLeft: number;
   rating: number;
+  ratingHistory: { rating: number; timestamp: Date }[];
+  ratingTrend: "up" | "down" | "stable";
 }
 
 const userStatsSchema = new mongoose.Schema<UserStatsIFace>(
@@ -51,6 +53,17 @@ const userStatsSchema = new mongoose.Schema<UserStatsIFace>(
     rating: {
       type: Number,
       default: 0,
+    },
+    ratingHistory: [
+      {
+        rating: { type: Number, required: true },
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
+    ratingTrend: {
+      type: String,
+      enum: ["up", "down", "stable"],
+      default: "stable",
     },
   },
   { timestamps: true },

@@ -9,7 +9,7 @@ router.get(
   passport.authenticate("google", {
     scope: ["profile", "email"],
     failureMessage: true,
-  })
+  }),
 );
 
 router.get(
@@ -23,6 +23,7 @@ router.get(
     req.session.user = {
       _id: user?._id,
       username: user?.username,
+      originalUsername: user?.originalUsername,
       avatar: user?.avatar,
       email: user?.email,
       isVerified: user?.isVerified,
@@ -34,7 +35,7 @@ router.get(
       }
       res.redirect("http://localhost:3000/?auth=redirecting");
     });
-  }
+  },
 );
 
 export default router;

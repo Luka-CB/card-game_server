@@ -34,7 +34,7 @@ export const handleRoomLeave = async (roomId: string, userId: string) => {
   if (!room) return;
 
   const updatedUsers = room.users.filter(
-    (user: { id: string }) => user.id !== userId
+    (user: { id: string }) => user.id !== userId,
   );
 
   if (updatedUsers.length === 0) {
@@ -57,7 +57,7 @@ export const rejoinRoom = async (
     id: string;
     username: string;
     avatar: string | null;
-  }[]
+  }[],
 ) => {
   const room = await getRoom(roomId);
 
@@ -76,7 +76,8 @@ export const joinRoom = async (
     status: "active" | "busy" | "inactive" | "left";
     avatar: string | null;
     botAvatar: string | null;
-  }
+    color: { value: string; textColor: string } | null;
+  },
 ) => {
   const room = await getRoom(roomId);
   if (!room) throw new Error("Room no longer exists");
@@ -100,6 +101,7 @@ export const joinRoom = async (
     status: userData.status || "active",
     avatar: userData.avatar || null,
     botAvatar: userData.botAvatar || null,
+    color: userData.color || null,
   };
 
   const updatedUsers = [...room.users, userToAdd];
@@ -114,7 +116,7 @@ export const joinRoom = async (
 export const updateUserStatus = async (
   roomId: string,
   userId: string,
-  status: "active" | "busy" | "inactive" | "left"
+  status: "active" | "busy" | "inactive" | "left",
 ) => {
   const room = await getRoom(roomId);
   if (!room) throw new Error("Room no longer exists");
@@ -125,7 +127,7 @@ export const updateUserStatus = async (
         return { ...user, status };
       }
       return user;
-    }
+    },
   );
 
   const updatedRoom = {
@@ -138,7 +140,7 @@ export const updateUserStatus = async (
 
 export const updateActiveRoomStatus = async (
   roomId: string,
-  value: boolean
+  value: boolean,
 ) => {
   const room = await getRoom(roomId);
   if (!room) throw new Error("Room no longer exists");
@@ -154,6 +156,11 @@ export const destroyRoom = async (roomId: string) => {
   const gameInfo = await redisClient.hget("games", roomId);
   if (gameInfo) {
     await redisClient.hdel("games", roomId);
+  }
+
+  const chat = await redisClient.hget("chats", roomId);
+  if (chat) {
+    await redisClient.hdel("chats", roomId);
   }
 
   const c = dealerRevealControllers[roomId];
