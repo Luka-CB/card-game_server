@@ -46,13 +46,11 @@ export const getJCoins: RequestHandler = async (req, res, next) => {
       return coins.toFixed();
     };
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        jCoins: formatCoins(UserStat.jCoins),
-        rawJCoins: UserStat.jCoins,
-      });
+    res.status(200).json({
+      success: true,
+      jCoins: formatCoins(UserStat.jCoins),
+      rawJCoins: UserStat.jCoins,
+    });
   } catch (error) {
     next(error);
   }
